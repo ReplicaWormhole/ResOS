@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5ef">
+  <title>Fieldwork — Research IDE</title>
+  <link rel="stylesheet" href="/public/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="sidebarToggle" class="icon-button" aria-label="Toggle conversations" aria-expanded="false">☰</button>
+    <div class="brand-mark" aria-hidden="true">f.</div>
+    <div class="brand-name">FIELDWORK <span>RESEARCH IDE</span></div>
+    <div class="workspace-indicator"><span class="status-dot"></span><span id="workspaceName">Opening workspace…</span></div>
+    <div class="topbar-spacer"></div>
+    <div id="agentBadge" class="agent-badge"><span class="status-dot"></span><span>Connecting agent</span></div>
+    <button id="newChatButton" class="button button-primary top-new-chat">＋ <span>New chat</span></button>
+  </header>
+
+  <main class="ide-grid">
+    <aside class="sidebar">
+      <div class="sidebar-tabs" role="tablist" aria-label="Workspace navigation">
+        <button id="chatsTab" class="sidebar-tab selected" role="tab" aria-selected="true">Chats</button>
+        <button id="filesTab" class="sidebar-tab" role="tab" aria-selected="false">Files</button>
+      </div>
+      <section id="fileNav" class="nav-content" aria-label="Project files" hidden>
+        <div class="nav-heading"><span>PROJECT</span><button id="refreshFiles" class="icon-button" title="Refresh files" aria-label="Refresh files">↻</button></div>
+        <div id="fileTree" class="file-tree"></div>
+      </section>
+      <section id="chatNav" class="nav-content" aria-label="Investigation chats">
+        <div class="nav-heading"><span>CONVERSATIONS</span><button id="chatNavNew" class="icon-button" title="New chat" aria-label="New chat">＋</button></div>
+        <div id="chatTree" class="chat-tree"></div>
+        <p class="sidebar-hint">Select a passage in an answer to branch from that point.</p>
+      </section>
+      <footer class="sidebar-footer"><span class="small-orbit">◌</span> Local workspace</footer>
+    </aside>
+
+    <section class="editor-panel" aria-label="File editor">
+      <div class="panel-tabs">
+        <button id="closeEditor" class="icon-button" aria-label="Close file editor">×</button>
+        <div id="editorTab" class="editor-tab empty-tab"><span class="file-glyph">⌘</span><span id="editorPath">Welcome</span></div>
+        <div id="dirtyMark" class="dirty-mark" hidden>Unsaved</div>
+        <button id="saveFile" class="button button-small" disabled>Save</button>
+      </div>
+      <div id="welcomeScreen" class="welcome-screen">
+        <div class="welcome-symbol">f</div>
+        <p class="eyebrow">A QUIET PLACE TO THINK</p>
+        <h1>Research, in context.</h1>
+        <p>Open a project file, or start a conversation with your local agent.<br>Branch from any answer when a question deserves its own thread.</p>
+        <div class="welcome-actions">
+          <button id="welcomeNewChat" class="button button-primary">Start a chat</button>
+          <button id="welcomeOpenFile" class="button button-secondary">Browse files</button>
+        </div>
+        <div class="welcome-tip"><span>TIP</span> Select any answer text and choose “Ask about selection” to branch.</div>
+      </div>
+      <div id="editorView" class="editor-view" hidden>
+        <div class="editor-gutter" id="lineNumbers" aria-hidden="true">1</div>
+        <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File contents"></textarea>
+      </div>
+      <div class="editor-status"><span id="editorStatus">Ready</span><span>UTF-8</span><span>Local file</span></div>
+    </section>
+
+    <section class="chat-panel" aria-label="AI conversation">
+      <div class="chat-header">
+        <div class="chat-heading">
+          <div class="chat-title-line"><span class="chat-sparkle">✳</span><h2 id="chatTitle">Research chat</h2></div>
+          <div id="chatOrigin" class="chat-origin" hidden></div>
+        </div>
+        <div class="chat-header-actions"><span id="turnState" class="turn-state">Ready</span><button id="chatNewButton" class="icon-button" title="New conversation" aria-label="New conversation">＋</button></div>
+      </div>
+      <div id="connectionNotice" class="connection-notice" hidden><span id="connectionMessage"></span><button id="reconnectButton" class="button">Retry connection</button></div>
+      <div id="selectedQuote" class="selected-quote" hidden>
+        <div class="quote-label"><span>BRANCHED FROM SELECTION</span><button id="quoteParentLink" class="text-button">Open parent ↗</button></div>
+        <blockquote id="quoteText"></blockquote>
+      </div>
+      <div id="approvalBar" class="approval-bar" hidden>
+        <div><strong>Agent needs permission</strong><span id="approvalDescription"></span></div>
+        <div class="approval-actions"><button id="declineApproval" class="button button-small">Decline</button><button id="allowApproval" class="button button-small button-primary">Allow once</button></div>
+      </div>
+      <div id="transcript" class="transcript">
+        <div id="emptyChat" class="empty-chat">
+          <div class="empty-mark">✳</div>
+          <h3>What are you working on?</h3>
+          <p>Talk to your agent. Select part of any answer to ask about it in a linked conversation.</p>
+          <div class="starter-prompts">
+            <button data-prompt="Help me understand the structure of this project.">Understand this project <span>↗</span></button>
+            <button data-prompt="What is the central question I should investigate next?">Find a next question <span>↗</span></button>
+          </div>
+        </div>
+      </div>
+      <form id="composerForm" class="composer">
+        <textarea id="composer" rows="2" placeholder="Ask anything about your research…" aria-label="Message the agent"></textarea>
+        <div class="composer-bottom"><button id="toggleEditor" class="text-button" type="button" aria-pressed="false">Files & editor</button><span class="composer-hint">Enter to send · Shift + Enter for newline</span><button id="stopButton" class="send-button stop-button" type="button" aria-label="Stop response" hidden>■</button><button id="sendButton" class="send-button" type="submit" aria-label="Send message">↑</button></div>
+      </form>
+      <div class="chat-footnote">Codex agent · Working in this local workspace</div>
+    </section>
+  </main>
+  <button id="sidebarScrim" class="sidebar-scrim" aria-label="Close navigation" hidden></button>
+  <button id="selectionAction" class="selection-action" hidden>Ask about selection <span>↗</span></button>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/public/app.js"></script>
+</body>
+</html>
