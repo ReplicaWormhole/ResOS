@@ -66,6 +66,73 @@ uses browser-native text editing, simple Markdown display, and no extra runtime
 dependencies. It does not yet provide project switching inside one running app,
 syntax highlighting, image/file attachments, or an automatic context summary.
 
+## How the browser code works
+
+`public/index.html` defines the panels and controls, `public/app.css` styles them,
+and the browser loads `public/app.js` as a native JavaScript module. No bundler
+or frontend framework is required. The server serves the imported modules too.
+
+| File | Responsibility |
+| --- | --- |
+| `public/app.js` | UI controller: active chat, open file, editor state, drafts, navigation, rendering, and action handlers. |
+| `public/browser-session.js` | Safe session storage and authenticated JSON requests to the server. |
+| `public/markdown.js` | Escapes HTML, then renders the supported subset of Markdown. |
+| `public/passages.js` | Maps text selections to offsets and highlights passages with linked chats. Receives a callback to open those chats. |
+| `public/branch-popup.js` | Owns the linked-chat dialog, chat choices, and popup reading position. |
+| `public/conversation-events.js` | Applies streamed message events to conversation data, without touching the DOM or making requests. |
+| `server.mjs` | Workspace file access, saved conversations, Codex app-server integration, and the browser event stream. |
+
+The main flows are:
+
+1. **Startup:** `initialize()` registers handlers once. `boot()` fetches
+   `/api/state`, loads the file tree, restores the selected chat and its draft,
+   and connects an `EventSource` to `/api/events`. Reconnecting replaces the
+   stream without registering the UI handlers again.
+2. **Sending:** `sendMessage()` immediately adds a local user message and an
+   assistant placeholder, then posts to `/api/chat/send`. The agent runs on the
+   server. `handleEvent()` receives progress; `applyConversationEvent()` assigns
+   server message IDs, appends text chunks, and marks completion. `renderChat()`
+   updates changed message elements while preserving reading position. A state
+   refresh reconciles the local view with the server; pending sends retain their
+   optimistic messages until the send request settles.
+3. **Files:** `openFile()` fetches saved text, ignores superseded loads, and
+   protects edits typed while loading. Read mode shows linked passages; Edit mode
+   uses the textarea. `saveFile()` sends its contents to `/api/file`, retaining
+   the original newline convention.
+4. **Questions about passages:** `showSelectionAction()` records the selected
+   text and its position. `branchFromSelection()` forks a chat from an assistant
+   turn; `askAboutFile()` creates a chat tied to a file or file selection.
+   `markLinkedPassages()` marks matching text. Activating a mark opens the popup;
+   its **Open chat to continue** button selects that conversation.
+
+The server owns saved conversation and file data. The browser owns transient
+state such as open panels, selections and scroll positions. Drafts and the
+active chat ID live in session storage, separate for each browser tab. Passage
+offsets count rendered text, including line breaks, rather than HTML or raw
+Markdown; this is what lets selections cross formatting boundaries.
+
+Run the dependency-free checks from the repository root:
+
+```sh
+node --test research-ide/tests/*.test.mjs
+node --check research-ide/public/app.js
+```
+
+The tests import the rendering and event modules directly. They cover passage
+matching, overlap and activation, file context, API errors and authentication,
+storage failure, HTML escaping, and streamed message reconciliation. The
+passage tests use a small DOM harness; browser checks are recorded separately
+in [VERIFICATION.md](VERIFICATION.md).
+
+An optional browser regression script serves an isolated in-memory API fixture
+and the actual client assets. It does not start Codex or change saved workspace
+data. Supply an existing Playwright installation and, optionally, a Chromium
+executable:
+
+```sh
+node research-ide/tests/browser-smoke.mjs /absolute/path/to/playwright/index.mjs /absolute/path/to/chromium
+```
+
 On the development computer, `fieldwork-research-ide.service` is a transient
 systemd user service so the app survives the chat session. Inspect it with
 `systemctl --user status fieldwork-research-ide.service`, or stop it with

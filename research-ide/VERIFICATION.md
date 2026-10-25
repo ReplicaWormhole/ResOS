@@ -94,3 +94,36 @@ gestures remain untested. File markers relocate by quote when unique; they are
 not a full document-version anchor system. The saved quote remains historical
 context if the file later changes. Screenshots are temporary artifacts under
 `/tmp/fieldwork-file-*.png`; runtime chat state remains ignored.
+
+## Browser client readability refactor, 25 October 2026
+
+Extracted browser storage/JSON transport, Markdown rendering, passage matching
+and highlighting, the linked-chat popup, and streamed conversation updates into
+native JavaScript modules. The controller now has explicit startup and grouped
+event registration. Navigation uses DOM construction and text content instead
+of long interpolated HTML strings. No runtime dependencies were added.
+
+Verification from the repository root:
+
+- `node --test research-ide/tests/*.test.mjs` passed. Running each test file
+  directly also passed all 20 individual cases (8 client, 7 passage, 5 file
+  context). These include API authentication/errors, unavailable storage,
+  escaping, optimistic message reconciliation, completion statuses, and passage
+  activation by pointer and keyboard.
+- `node --check` passed for all six browser modules and the browser smoke script.
+- `node research-ide/tests/browser-smoke.mjs <playwright-module> <chromium-executable>`
+  passed with the locally installed Playwright and Chromium. Its isolated HTTP
+  fixture exercised authenticated module loading, draft switching and reload,
+  safe message rendering, linked popups, parent/source navigation, file editing
+  and saving, selected/whole-file questions, answer branching, streamed output,
+  stop, approvals, and mobile navigation. No browser console or page errors
+  occurred. The fixture keeps all chat/file mutations in memory.
+- `git diff --check` passed.
+
+Adversarial review checked the extra module imports, event registration,
+callback wiring, text escaping, selection offsets, and retained load/send race
+guards. A status-map lookup introduced during extraction was replaced with
+explicit status comparisons, preserving the original handling of unknown
+statuses; a regression test covers it. No unresolved blocking findings remain.
+This validates the browser against simulated server responses; a fresh live
+Codex turn and physical iPad Safari were not exercised for this refactor.

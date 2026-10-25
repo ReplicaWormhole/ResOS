@@ -1,33 +1,76 @@
-const $ = selector => document.querySelector(selector);
+/**
+ * Browser UI controller. The server owns saved files and conversations; this
+ * module owns transient UI state (selection, drafts, open panels and scroll).
+ * API/storage, text rendering, passage anchors and streamed message updates
+ * live in the small modules below. See ../README.md for the flow.
+ */
+import { createApiClient, sessionRead, sessionWrite } from './browser-session.js';
+import { escapeHtml, safeMarkdown } from './markdown.js';
+import { passageText, markLinkedPassages } from './passages.js';
+import { createBranchPopup } from './branch-popup.js';
+import { applyConversationEvent } from './conversation-events.js';
+
+// DOM references and transient state
+
+const query = selector => document.querySelector(selector);
 const accessUrl = new URL(window.location.href);
-function sessionRead(key, fallback = '') { try { return sessionStorage.getItem(key) || fallback; } catch { return fallback; } }
-function sessionWrite(key, value) { try { sessionStorage.setItem(key, value); return true; } catch { return false; } }
 const accessKey = accessUrl.searchParams.get('key') || sessionRead('research-ide-access-key');
-if (accessUrl.searchParams.has('key') && sessionWrite('research-ide-access-key', accessKey)) history.replaceState(null, '', accessUrl.pathname);
+if (accessUrl.searchParams.has('key') && sessionWrite('research-ide-access-key', accessKey)) {
+  history.replaceState(null, '', accessUrl.pathname);
+}
 let localSequence = 0;
 // These IDs only reconcile optimistic browser messages. They are not credentials.
-const localId = () => 'local-' + Date.now().toString(36) + '-' + (++localSequence);
-const el = {
-  workspace: $('#workspaceName'), agentBadge: $('#agentBadge'), fileTree: $('#fileTree'),
-  chatTree: $('#chatTree'), filesTab: $('#filesTab'), chatsTab: $('#chatsTab'),
-  fileNav: $('#fileNav'), chatNav: $('#chatNav'), editor: $('#editor'),
-  editorPath: $('#editorPath'), editorView: $('#editorView'), welcome: $('#welcomeScreen'),
-  save: $('#saveFile'), dirty: $('#dirtyMark'), lineNumbers: $('#lineNumbers'),
-  editorStatus: $('#editorStatus'), transcript: $('#transcript'), emptyChat: $('#emptyChat'),
-  chatTitle: $('#chatTitle'), chatOrigin: $('#chatOrigin'), quote: $('#selectedQuote'),
-  quoteText: $('#quoteText'), quoteParent: $('#quoteParentLink'),
-  composer: $('#composer'), send: $('#sendButton'), turnState: $('#turnState'),
-  selectionAction: $('#selectionAction'), toast: $('#toast'), approvalBar: $('#approvalBar'),
-  approvalDescription: $('#approvalDescription'),
+const localId = () => `local-${Date.now().toString(36)}-${++localSequence}`;
+const elements = {
+  workspace: query('#workspaceName'),
+  agentBadge: query('#agentBadge'),
+  fileTree: query('#fileTree'),
+  chatTree: query('#chatTree'),
+  filesTab: query('#filesTab'),
+  chatsTab: query('#chatsTab'),
+  fileNav: query('#fileNav'),
+  chatNav: query('#chatNav'),
+  editor: query('#editor'),
+  editorPath: query('#editorPath'),
+  editorView: query('#editorView'),
+  welcome: query('#welcomeScreen'),
+  save: query('#saveFile'),
+  dirty: query('#dirtyMark'),
+  lineNumbers: query('#lineNumbers'),
+  editorStatus: query('#editorStatus'),
+  transcript: query('#transcript'),
+  emptyChat: query('#emptyChat'),
+  chatTitle: query('#chatTitle'),
+  chatOrigin: query('#chatOrigin'),
+  quote: query('#selectedQuote'),
+  quoteText: query('#quoteText'),
+  quoteParent: query('#quoteParentLink'),
+  composer: query('#composer'),
+  send: query('#sendButton'),
+  turnState: query('#turnState'),
+  selectionAction: query('#selectionAction'),
+  toast: query('#toast'),
+  approvalBar: query('#approvalBar'),
+  approvalDescription: query('#approvalDescription')
 };
-let appState = { conversations: [], workspace: '', agentReady: false };
+const appState = {
+  conversations: [],
+  workspace: '',
+  agentReady: false
+};
+
+// Conversation and request state.
 let activeChatId = null;
 let creatingChat = false;
+
+// File editor state; loading uses a sequence to reject stale responses.
 let openedFile = null;
 let fileDirty = false;
 let fileEditing = false;
 let fileLoadSequence = 0;
 let fileNewline = '\n';
+
+// Render/selection state and connection bookkeeping.
 let selectedSpan = null;
 let renderedChatId = null;
 let events = null;
@@ -37,221 +80,109 @@ const pendingSends = new Set();
 const pendingApprovals = [];
 let toastTimeout = null;
 const openDirectories = new Set(['.']);
+const api = createApiClient(accessKey);
+const branchPopup = createBranchPopup({
+  getConversations: () => appState.conversations,
+  onSelect: selectChat,
+  onOpen: () => {
+    elements.selectionAction.hidden = true;
+  }
+});
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(accessKey ? { 'x-access-key': accessKey } : {}), ...options.headers },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || 'Request failed (' + response.status + ').');
-  return body;
-}
+// Layout, drafts and connection notices
+
 function setEditorOpen(open) {
   document.body.classList.toggle('editor-open', open);
-  $('#toggleEditor').setAttribute('aria-pressed', String(open));
+  query('#toggleEditor').setAttribute('aria-pressed', String(open));
 }
+
 function closeNavigation() {
   document.body.classList.remove('sidebar-open');
-  $('#sidebarScrim').hidden = true;
-  $('#sidebarToggle').setAttribute('aria-expanded', String(!document.body.classList.contains('sidebar-collapsed') && window.innerWidth > 760));
+  query('#sidebarScrim').hidden = true;
+  const expanded = !document.body.classList.contains('sidebar-collapsed') && window.innerWidth > 760;
+  query('#sidebarToggle').setAttribute('aria-expanded', String(expanded));
 }
+
 function saveDraft() {
-  if (activeChatId) sessionWrite('draft:' + activeChatId, el.composer.value);
+  if (activeChatId) {
+    sessionWrite('draft:' + activeChatId, elements.composer.value);
+  }
 }
+
 function resizeComposer() {
-  el.composer.style.height = 'auto';
-  el.composer.style.height = Math.min(180, Math.max(60, el.composer.scrollHeight)) + 'px';
+  elements.composer.style.height = 'auto';
+  elements.composer.style.height = Math.min(180, Math.max(60, elements.composer.scrollHeight)) + 'px';
 }
+
 function restoreDraft() {
-  el.composer.value = activeChatId ? sessionRead('draft:' + activeChatId) : '';
+  elements.composer.value = activeChatId ? sessionRead('draft:' + activeChatId) : '';
   resizeComposer();
 }
+
 function fitViewport() {
   const viewport = window.visualViewport;
-  if (viewport && viewport.scale > 1.05) return;
+  if (viewport && viewport.scale > 1.05) {
+    return;
+  }
   document.documentElement.style.setProperty('--app-height', (viewport?.height || window.innerHeight) + 'px');
   document.documentElement.style.setProperty('--viewport-top', (viewport?.offsetTop || 0) + 'px');
-  $('#sidebarToggle').setAttribute('aria-expanded', String(window.innerWidth <= 760 ? document.body.classList.contains('sidebar-open') : !document.body.classList.contains('sidebar-collapsed')));
+  const expanded = window.innerWidth <= 760
+    ? document.body.classList.contains('sidebar-open')
+    : !document.body.classList.contains('sidebar-collapsed');
+  query('#sidebarToggle').setAttribute('aria-expanded', String(expanded));
 }
+
 function connectionNotice(message = '') {
-  $('#connectionNotice').hidden = !message;
-  $('#connectionMessage').textContent = message;
+  query('#connectionNotice').hidden = !message;
+  query('#connectionMessage').textContent = message;
 }
-function escapeHtml(value) {
-  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
-function safeMarkdown(value) {
-  const fences = [];
-  let text = escapeHtml(value).replace(/```[^\n]*\n([\s\S]*?)(?:```|$)/g, (_, code) => {
-    const token = '\u0000FENCE' + fences.length + '\u0000';
-    fences.push('<pre><code>' + code.trimEnd() + '</code></pre>');
-    return token;
-  });
-  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-  text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-  text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  text = text.replace(/^(#{1,3})\s+(.+)$/gm, (_, hashes, title) => {
-    const level = Math.min(hashes.length + 2, 5);
-    return '<h' + level + '>' + title + '</h' + level + '>';
-  });
-  return text.replace(/\n/g, '<br>').replace(/\u0000FENCE(\d+)\u0000/g, (_, index) => fences[Number(index)] || '');
-}
-// A single text coordinate system for selections and rendered Markdown, including line breaks.
-function passageText(root) {
-  let text = '';
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  while (walker.nextNode()) {
-    if (walker.currentNode.nodeType === Node.TEXT_NODE) text += walker.currentNode.data;
-    else if (walker.currentNode.nodeName === 'BR') text += '\n';
-  }
-  return text;
-}
-function passageRange(text, chat, message) {
-  const quote = chat.selectedQuote || '';
-  if (!quote) return null;
-  if (Number.isInteger(chat.selectedStart) && chat.parentMessageId === message.id &&
-      text.slice(chat.selectedStart, chat.selectedStart + quote.length) === quote) {
-    return [chat.selectedStart, chat.selectedStart + quote.length];
-  }
-  const start = text.indexOf(quote);
-  if (chat.sourceFile && start !== text.lastIndexOf(quote)) return null;
-  if (start >= 0) return [start, start + quote.length];
-  // Older selections may use browser-inserted newlines or raw Markdown.
-  const normalized = [], positions = [];
-  for (let i = 0; i < text.length; i++) {
-    const char = /\s/.test(text[i]) ? ' ' : text[i];
-    if (char === ' ' && normalized.at(-1) === ' ') continue;
-    normalized.push(char); positions.push(i);
-  }
-  const needle = quote.replace(/\s+/g, ' ').trim();
-  const index = normalized.join('').indexOf(needle);
-  return index < 0 || !needle ? null : [positions[index], positions[index + needle.length - 1] + 1];
-}
-let popupChatIds = [];
-let popupChatId = null;
-function renderBranchPopup() {
-  const dialog = $('#branchPopup');
-  if (!dialog.open) return;
-  const chats = popupChatIds.map(id => appState.conversations.find(chat => chat.id === id)).filter(Boolean);
-  const chat = chats.find(chat => chat.id === popupChatId) || chats[0];
-  if (!chat) { dialog.close(); return; }
-  popupChatId = chat.id;
-  $('#branchPopupTitle').textContent = chat.title;
-  const choices = $('#branchPopupChoices');
-  const choiceSignature = JSON.stringify([chats.map(item => [item.id, item.title]), chat.id]);
-  if (choices.dataset.signature !== choiceSignature) {
-    choices.dataset.signature = choiceSignature;
-    choices.replaceChildren();
-    if (chats.length > 1) for (const item of chats) {
-      const button = document.createElement('button');
-      button.className = 'button button-small';
-      button.textContent = item.title;
-      button.setAttribute('aria-pressed', String(item.id === chat.id));
-      button.onclick = () => { popupChatId = item.id; renderBranchPopup(); };
-      choices.append(button);
-    }
-  }
-  $('#branchPopupQuote').textContent = chat.selectedQuote;
-  const transcript = $('#branchPopupTranscript');
-  const oldScrollTop = transcript.scrollTop;
-  const bottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
-  const signature = JSON.stringify([chat.id, chat.messages, chat.busy]);
-  if (transcript.dataset.signature !== signature) {
-    const switched = transcript.dataset.chatId !== chat.id;
-    transcript.dataset.signature = signature;
-    transcript.dataset.chatId = chat.id;
-    transcript.replaceChildren();
-    for (const message of chat.messages) {
-      const article = document.createElement('article');
-      article.className = 'chat-message ' + message.role;
-      const body = document.createElement('div');
-      body.className = message.role === 'assistant' ? 'message-body' : 'message-bubble';
-      if (message.role === 'assistant') body.innerHTML = safeMarkdown(message.text || (chat.busy ? 'Thinking…' : ''));
-      else body.textContent = message.text;
-      article.append(body); transcript.append(article);
-    }
-    if (!chat.messages.length) transcript.textContent = 'No messages yet. Open this chat to ask your question.';
-    transcript.scrollTop = switched || bottom ? transcript.scrollHeight : oldScrollTop;
-  }
-}
-function openBranchPopup(ids) {
-  popupChatIds = ids;
-  popupChatId = ids[0];
-  el.selectionAction.hidden = true;
-  const dialog = $('#branchPopup');
-  if (!dialog.open) dialog.showModal();
-  renderBranchPopup();
-}
-function markLinkedPassages(body, message, children) {
-  if (!children.length) return [];
-  const text = passageText(body);
-  const ranges = children.map(chat => ({ chat, range: passageRange(text, chat, message) })).filter(item => item.range);
-  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  const nodes = [];
-  let offset = 0;
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    if (node.nodeType === Node.TEXT_NODE) { nodes.push({ node, start: offset }); offset += node.length; }
-    else if (node.nodeName === 'BR') offset++;
-  }
-  for (const { node, start } of nodes) {
-    const cuts = new Set([0, node.length]);
-    for (const { range: [a, b] } of ranges) {
-      if (a < start + node.length && b > start) { cuts.add(Math.max(0, a - start)); cuts.add(Math.min(node.length, b - start)); }
-    }
-    const points = [...cuts].sort((a, b) => a - b);
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = points[i], b = points[i + 1];
-      const linked = ranges.filter(item => item.range[0] < start + b && item.range[1] > start + a);
-      const textNode = document.createTextNode(node.data.slice(a, b));
-      if (!linked.length) { fragment.append(textNode); continue; }
-      const mark = document.createElement('mark');
-      mark.className = 'linked-passage';
-      mark.tabIndex = 0;
-      mark.setAttribute('role', 'button');
-      mark.setAttribute('aria-haspopup', 'dialog');
-      mark.title = 'View ' + linked.length + ' linked chat' + (linked.length > 1 ? 's' : '');
-      mark.setAttribute('aria-label', mark.title + ': ' + textNode.data);
-      const open = event => {
-        event.preventDefault(); event.stopPropagation();
-        if (window.getSelection()?.toString()) return;
-        openBranchPopup(linked.map(item => item.chat.id));
-      };
-      mark.addEventListener('click', open);
-      mark.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { window.getSelection()?.removeAllRanges(); open(event); }
-      });
-      mark.append(textNode); fragment.append(mark);
-    }
-    node.replaceWith(fragment);
-  }
-  return children.filter(chat => !ranges.some(item => item.chat.id === chat.id));
-}
+
+// Status and workspace navigation
+
 function showToast(text) {
-  el.toast.textContent = text;
-  el.toast.classList.add('show');
+  elements.toast.textContent = text;
+  elements.toast.classList.add('show');
   clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => el.toast.classList.remove('show'), 3200);
+  toastTimeout = setTimeout(() => elements.toast.classList.remove('show'), 3200);
 }
+
 function setAgentReady(ready, text) {
   appState.agentReady = ready;
-  el.agentBadge.classList.toggle('ready', ready);
-  el.agentBadge.innerHTML = '<span class="status-dot"></span><span>' + escapeHtml(text || (ready ? 'Codex connected' : 'Agent offline')) + '</span>';
+  elements.agentBadge.classList.toggle('ready', ready);
+  const label = text || (ready ? 'Codex connected' : 'Agent offline');
+  elements.agentBadge.innerHTML = '<span class="status-dot"></span><span>' + escapeHtml(label) + '</span>';
 }
-function currentChat() { return appState.conversations.find(chat => chat.id === activeChatId) || null; }
+
+function currentChat() {
+  return appState.conversations.find(chat => chat.id === activeChatId) || null;
+}
+
 function chatDepth(chat, byId = new Map(appState.conversations.map(item => [item.id, item]))) {
-  let depth = 0, current = chat;
-  while (current?.parentId && depth < 10) { current = byId.get(current.parentId); if (!current) break; depth++; }
+  let depth = 0;
+  let current = chat;
+  while (current?.parentId && depth < 10) {
+    current = byId.get(current.parentId);
+    if (!current) {
+      break;
+    }
+    depth++;
+  }
   return depth;
 }
+
 function renderChatTree() {
-  const visibleChats = appState.conversations.filter(chat => chat.messages.length || chat.id === activeChatId || sessionRead('draft:' + chat.id) || appState.conversations.some(child => child.parentId === chat.id));
-  const ordered = [], visited = new Set();
+  const visibleChats = appState.conversations.filter(chat => (
+    chat.messages.length ||
+    chat.id === activeChatId ||
+    sessionRead('draft:' + chat.id) ||
+    appState.conversations.some(child => child.parentId === chat.id)
+  ));
+  const ordered = [];
+  const visited = new Set();
   const append = chat => {
-    if (visited.has(chat.id)) return;
+    if (visited.has(chat.id)) {
+      return;
+    }
     visited.add(chat.id);
     ordered.push(chat);
     visibleChats.filter(item => item.parentId === chat.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).forEach(append);
@@ -259,172 +190,318 @@ function renderChatTree() {
   visibleChats.filter(chat => !chat.parentId).sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt)).forEach(append);
   visibleChats.forEach(append);
   if (!ordered.length) {
-    el.chatTree.innerHTML = '<div class="no-items">Start a chat to begin an investigation.</div>';
+    elements.chatTree.innerHTML = '<div class="no-items">Start a chat to begin an investigation.</div>';
     return;
   }
-  el.chatTree.innerHTML = ordered.map(chat => {
-    const indent = Math.min(chatDepth(chat), 5) * 13;
-    return '<button class="chat-entry ' + (chat.id === activeChatId ? 'active ' : '') + (chat.busy ? 'is-working' : '') + '" aria-current="' + (chat.id === activeChatId ? 'true' : 'false') + '" data-chat-id="' + escapeHtml(chat.id) + '" style="padding-left:' + (8 + indent) + 'px" title="' + escapeHtml(chat.title) + '">' +
-      '<span class="branch-icon ' + (!chat.parentId ? 'root' : '') + '">' + (chat.parentId ? '↳' : '◦') + '</span><span class="entry-label">' + escapeHtml(chat.title) + '</span></button>';
-  }).join('');
-  for (const button of el.chatTree.querySelectorAll('[data-chat-id]')) button.addEventListener('click', () => selectChat(button.dataset.chatId));
+  elements.chatTree.replaceChildren();
+  for (const chat of ordered) {
+    const button = document.createElement('button');
+    button.className = 'chat-entry';
+    button.classList.toggle('active', chat.id === activeChatId);
+    button.classList.toggle('is-working', Boolean(chat.busy));
+    button.setAttribute('aria-current', String(chat.id === activeChatId));
+    button.dataset.chatId = chat.id;
+    button.style.paddingLeft = (8 + Math.min(chatDepth(chat), 5) * 13) + 'px';
+    button.title = chat.title;
+
+    const icon = document.createElement('span');
+    icon.className = chat.parentId ? 'branch-icon' : 'branch-icon root';
+    icon.textContent = chat.parentId ? '↳' : '◦';
+    const label = document.createElement('span');
+    label.className = 'entry-label';
+    label.textContent = chat.title;
+
+    button.append(icon, label);
+    button.addEventListener('click', () => selectChat(chat.id));
+    elements.chatTree.append(button);
+  }
 }
-async function renderDirectory(relative = '.', container = el.fileTree, depth = 0) {
+
+async function renderDirectory(relative = '.', container = elements.fileTree, depth = 0) {
   let data;
-  try { data = await api('/api/files?path=' + encodeURIComponent(relative)); }
-  catch (error) { container.innerHTML = '<div class="no-items">' + escapeHtml(error.message) + '</div>'; return; }
-  const rows = [];
+  try {
+    data = await api('/api/files?path=' + encodeURIComponent(relative));
+  } catch (error) {
+    container.innerHTML = '<div class="no-items">' + escapeHtml(error.message) + '</div>';
+    return;
+  }
+  const rows = document.createDocumentFragment();
+  const childDirectories = [];
   for (const entry of data.entries) {
+    const isDirectory = entry.type === 'directory';
     const isOpen = openDirectories.has(entry.path);
-    const icon = entry.type === 'directory' ? (isOpen ? '▾' : '▸') : '·';
-    rows.push('<button class="file-entry ' + (openedFile === entry.path ? 'active' : '') + '" data-path="' + escapeHtml(entry.path) + '" data-type="' + entry.type + '" style="padding-left:' + (8 + depth * 12) + 'px"><span class="file-icon ' + entry.type + '">' + icon + '</span><span class="entry-label">' + escapeHtml(entry.name) + '</span></button>');
-    if (entry.type === 'directory' && isOpen && depth < 4) rows.push('<div class="directory-children" data-parent="' + escapeHtml(entry.path) + '"></div>');
-  }
-  if (!rows.length && relative === '.') rows.push('<div class="no-items">This workspace has no visible files yet.</div>');
-  container.innerHTML = rows.join('');
-  for (const button of container.querySelectorAll(':scope > .file-entry')) {
+    const button = document.createElement('button');
+    button.className = 'file-entry';
+    button.classList.toggle('active', openedFile === entry.path);
+    button.dataset.path = entry.path;
+    button.dataset.type = entry.type;
+    button.style.paddingLeft = (8 + depth * 12) + 'px';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon ' + entry.type;
+    icon.textContent = isDirectory ? (isOpen ? '▾' : '▸') : '·';
+    const label = document.createElement('span');
+    label.className = 'entry-label';
+    label.textContent = entry.name;
+    button.append(icon, label);
     button.addEventListener('click', async () => {
-      if (button.dataset.type === 'directory') {
-        if (openDirectories.has(button.dataset.path)) openDirectories.delete(button.dataset.path);
-        else openDirectories.add(button.dataset.path);
-        await renderDirectory();
-      } else await openFile(button.dataset.path);
+      if (!isDirectory) {
+        await openFile(entry.path);
+        return;
+      }
+      if (openDirectories.has(entry.path)) {
+        openDirectories.delete(entry.path);
+      } else {
+        openDirectories.add(entry.path);
+      }
+      await renderDirectory();
     });
+    rows.append(button);
+
+    if (isDirectory && isOpen && depth < 4) {
+      const child = document.createElement('div');
+      child.className = 'directory-children';
+      child.dataset.parent = entry.path;
+      rows.append(child);
+      childDirectories.push({ path: entry.path, container: child });
+    }
   }
-  for (const child of container.querySelectorAll(':scope > .directory-children')) await renderDirectory(child.dataset.parent, child, depth + 1);
+  if (!data.entries.length && relative === '.') {
+    const empty = document.createElement('div');
+    empty.className = 'no-items';
+    empty.textContent = 'This workspace has no visible files yet.';
+    rows.append(empty);
+  }
+  container.replaceChildren(rows);
+  for (const child of childDirectories) {
+    await renderDirectory(child.path, child.container, depth + 1);
+  }
 }
+
+// File reading and editing
+
 function updateGutter() {
-  const count = Math.max(1, el.editor.value.split('\n').length);
-  el.lineNumbers.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
+  const count = Math.max(1, elements.editor.value.split('\n').length);
+  elements.lineNumbers.textContent = Array.from({
+    length: count
+  }, (_, i) => i + 1).join('\n');
 }
+
 function renderFilePreview() {
-  if (!openedFile || fileEditing) return;
-  const preview = $('#filePreview');
+  if (!openedFile || fileEditing) {
+    return;
+  }
+  const preview = query('#filePreview');
   const children = appState.conversations.filter(chat => chat.sourceFile?.path === openedFile);
-  const signature = JSON.stringify([openedFile, el.editor.value, children.map(chat => [chat.id, chat.selectedQuote, chat.selectedStart])]);
-  if (preview.dataset.signature === signature) return;
+  const signature = JSON.stringify([openedFile, elements.editor.value, children.map(chat => [chat.id, chat.selectedQuote, chat.selectedStart])]);
+  if (preview.dataset.signature === signature) {
+    return;
+  }
   preview.dataset.signature = signature;
-  preview.textContent = el.editor.value;
-  const unmatched = markLinkedPassages(preview, { id: 'file:' + openedFile }, children.filter(chat => chat.selectedQuote));
-  const links = $('#fileFollowups');
+  preview.textContent = elements.editor.value;
+  const unmatched = markLinkedPassages(preview, {
+    id: 'file:' + openedFile
+  }, children.filter(chat => chat.selectedQuote), branchPopup.open);
+  const links = query('#fileFollowups');
   links.replaceChildren();
   for (const chat of children) {
     const button = document.createElement('button');
     button.className = 'text-button';
     button.textContent = '↳ ' + chat.title + (unmatched.includes(chat) ? ' (passage changed)' : '');
-    button.onclick = () => openBranchPopup([chat.id]);
+    button.onclick = () => branchPopup.open([chat.id]);
     links.append(button);
   }
 }
+
 function showEditor() {
-  el.welcome.hidden = Boolean(openedFile);
-  el.editorView.hidden = !openedFile || !fileEditing;
-  $('#fileReading').hidden = !openedFile || fileEditing;
-  $('#toggleFileEdit').disabled = !openedFile;
-  $('#toggleFileEdit').textContent = fileEditing ? 'Read' : 'Edit';
-  $('#askFile').disabled = !openedFile || fileDirty || creatingChat;
-  $('#askFile').textContent = (fileEditing ? el.editor.selectionEnd > el.editor.selectionStart : selectedSpan?.filePath === openedFile) ? 'Ask about selection ↗' : 'Ask about file ↗';
-  $('#askFile').title = fileDirty ? 'Save your edits before asking about this file' : '';
-  el.save.hidden = !fileEditing;
+  elements.welcome.hidden = Boolean(openedFile);
+  elements.editorView.hidden = !openedFile || !fileEditing;
+  query('#fileReading').hidden = !openedFile || fileEditing;
+  query('#toggleFileEdit').disabled = !openedFile;
+  query('#toggleFileEdit').textContent = fileEditing ? 'Read' : 'Edit';
+  query('#askFile').disabled = !openedFile || fileDirty || creatingChat;
+  const hasSelection = fileEditing
+    ? elements.editor.selectionEnd > elements.editor.selectionStart
+    : selectedSpan?.filePath === openedFile;
+  query('#askFile').textContent = hasSelection ? 'Ask about selection ↗' : 'Ask about file ↗';
+  query('#askFile').title = fileDirty ? 'Save your edits before asking about this file' : '';
+  elements.save.hidden = !fileEditing;
   renderFilePreview();
-  el.editorPath.textContent = openedFile || 'Welcome';
-  el.save.disabled = !openedFile || !fileDirty;
-  el.dirty.hidden = !fileDirty;
-  el.editorStatus.textContent = openedFile ? (fileDirty ? 'Modified' : 'Ready') : 'Ready';
+  elements.editorPath.textContent = openedFile || 'Welcome';
+  elements.save.disabled = !openedFile || !fileDirty;
+  elements.dirty.hidden = !fileDirty;
+  elements.editorStatus.textContent = fileDirty ? 'Modified' : 'Ready';
 }
+
 async function openFile(relative, reveal = true) {
-  if (fileDirty && openedFile !== relative && !window.confirm('Discard unsaved changes to ' + openedFile + '?')) return;
-  if (fileDirty && openedFile === relative) { if (reveal) { setEditorOpen(true); closeNavigation(); } return; }
+  if (fileDirty && openedFile !== relative && !window.confirm('Discard unsaved changes to ' + openedFile + '?')) {
+    return;
+  }
+  if (fileDirty && openedFile === relative) {
+    if (reveal) {
+      setEditorOpen(true);
+      closeNavigation();
+    }
+    return;
+  }
+  // Ignore older loads and preserve edits typed while this request is in flight.
   const loadSequence = ++fileLoadSequence;
-  const previousFile = openedFile, previousText = el.editor.value;
+  const previousFile = openedFile,
+    previousText = elements.editor.value;
   try {
     const file = await api('/api/file?path=' + encodeURIComponent(relative));
-    if (loadSequence !== fileLoadSequence) return;
-    if (openedFile === previousFile && el.editor.value !== previousText) { showToast('File opening cancelled to preserve your latest edits.'); return; }
+    if (loadSequence !== fileLoadSequence) {
+      return;
+    }
+    if (openedFile === previousFile && elements.editor.value !== previousText) {
+      showToast('File opening cancelled to preserve your latest edits.');
+      return;
+    }
     selectedSpan = null;
-    el.selectionAction.hidden = true;
+    elements.selectionAction.hidden = true;
     openedFile = file.path;
     fileEditing = false;
     fileNewline = file.content.includes('\r\n') ? '\r\n' : '\n';
-    el.editor.value = file.content;
+    elements.editor.value = file.content;
     fileDirty = false;
     showEditor();
-    if (reveal) { setEditorOpen(true); closeNavigation(); }
+    if (reveal) {
+      setEditorOpen(true);
+      closeNavigation();
+    }
     updateGutter();
     await renderDirectory();
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    showToast(error.message);
+  }
 }
+
 async function saveFile() {
-  if (!openedFile || !fileDirty) return;
+  if (!openedFile || !fileDirty) {
+    return;
+  }
   try {
-    await api('/api/file', { method: 'PUT', body: JSON.stringify({ path: openedFile, content: fileNewline === '\r\n' ? el.editor.value.replace(/\n/g, '\r\n') : el.editor.value }) });
+    await api('/api/file', {
+      method: 'PUT',
+      body: JSON.stringify({
+        path: openedFile,
+        content: fileNewline === '\r\n' ? elements.editor.value.replace(/\n/g, '\r\n') : elements.editor.value
+      })
+    });
     fileDirty = false;
     showEditor();
     showToast('Saved ' + openedFile);
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    showToast(error.message);
+  }
 }
+
+// Conversation rendering and navigation
+
 function openChatSource() {
   const chat = currentChat();
-  if (chat?.sourceFile) openFile(chat.sourceFile.path);
-  else if (chat?.parentId) selectChat(chat.parentId);
+  if (chat?.sourceFile) {
+    openFile(chat.sourceFile.path);
+  } else if (chat?.parentId) {
+    selectChat(chat.parentId);
+  }
 }
+
 function renderQuote(chat) {
   const hasSource = Boolean(chat?.selectedQuote || chat?.sourceFile);
-  el.quote.hidden = !hasSource;
-  el.chatOrigin.hidden = !hasSource;
-  if (!hasSource) return;
-  el.quoteText.textContent = chat.selectedQuote || 'Question about the whole file.';
-  $('#quoteLabel').textContent = chat.sourceFile ? 'SOURCE FILE' : 'BRANCHED FROM SELECTION';
-  el.quoteParent.textContent = chat.sourceFile ? 'Open file ↗' : 'Open parent ↗';
+  elements.quote.hidden = !hasSource;
+  elements.chatOrigin.hidden = !hasSource;
+  if (!hasSource) {
+    return;
+  }
+  elements.quoteText.textContent = chat.selectedQuote || 'Question about the whole file.';
+  query('#quoteLabel').textContent = chat.sourceFile ? 'SOURCE FILE' : 'BRANCHED FROM SELECTION';
+  elements.quoteParent.textContent = chat.sourceFile ? 'Open file ↗' : 'Open parent ↗';
   const parent = appState.conversations.find(item => item.id === chat.parentId);
-  const source = chat.sourceFile ? chat.sourceFile.path + (chat.sourceFile.line ? ':' + chat.sourceFile.line : '') : parent?.title || 'parent chat';
-  el.chatOrigin.innerHTML = (chat.sourceFile ? 'From ' : 'Branched from ') + '<button type="button" id="originParent">' + escapeHtml(source) + '</button>';
-  $('#originParent').addEventListener('click', openChatSource);
+  const source = chat.sourceFile
+    ? chat.sourceFile.path + (chat.sourceFile.line ? ':' + chat.sourceFile.line : '')
+    : parent?.title || 'parent chat';
+  const originButton = document.createElement('button');
+  originButton.type = 'button';
+  originButton.id = 'originParent';
+  originButton.textContent = source;
+  originButton.addEventListener('click', openChatSource);
+  elements.chatOrigin.replaceChildren(chat.sourceFile ? 'From ' : 'Branched from ', originButton);
 }
+
+function renderEmptyChat(chat, empty) {
+  elements.emptyChat.hidden = !empty;
+  const title = elements.emptyChat.querySelector('h3');
+  const description = elements.emptyChat.querySelector('p');
+  const prompts = elements.emptyChat.querySelector('.starter-prompts');
+  prompts.hidden = Boolean(chat?.sourceFile);
+  if (chat?.sourceFile) {
+    title.textContent = 'What would you like to know about this file?';
+    description.textContent = chat.selectedQuote
+      ? 'The file path and selected passage are attached to this conversation. Ask your question below.'
+      : 'The file path is attached to this conversation. Ask your question below.';
+  } else {
+    title.textContent = 'What are you working on?';
+    description.textContent = 'Talk to your agent. Select part of any answer to ask about it in a linked conversation.';
+  }
+}
+
 function renderChat(forceScroll = false) {
   const chat = currentChat();
   const changedChat = renderedChatId !== activeChatId;
-  const stickToBottom = forceScroll || el.transcript.scrollHeight - el.transcript.scrollTop - el.transcript.clientHeight < 100;
-  el.chatTitle.textContent = chat?.title || 'Research chat';
-  el.turnState.textContent = chat?.busy ? 'Agent working…' : 'Ready';
-  el.send.disabled = !chat || chat.busy || creatingChat;
-  el.send.hidden = Boolean(chat?.busy);
-  $('#stopButton').hidden = !chat?.busy;
-  el.composer.disabled = !chat || creatingChat;
-  el.composer.placeholder = chat?.busy ? 'Write your next message…' : 'Ask anything about your research…';
+  const stickToBottom = forceScroll || elements.transcript.scrollHeight - elements.transcript.scrollTop - elements.transcript.clientHeight < 100;
+  elements.chatTitle.textContent = chat?.title || 'Research chat';
+  elements.turnState.textContent = chat?.busy ? 'Agent working…' : 'Ready';
+  elements.send.disabled = !chat || chat.busy || creatingChat;
+  elements.send.hidden = Boolean(chat?.busy);
+  query('#stopButton').hidden = !chat?.busy;
+  elements.composer.disabled = !chat || creatingChat;
+  elements.composer.placeholder = chat?.busy ? 'Write your next message…' : 'Ask anything about your research…';
   renderQuote(chat);
   const messages = chat?.messages || [];
-  el.emptyChat.hidden = messages.length > 0;
-  el.emptyChat.querySelector('h3').textContent = chat?.sourceFile ? 'What would you like to know about this file?' : 'What are you working on?';
-  el.emptyChat.querySelector('p').textContent = chat?.sourceFile ? (chat.selectedQuote ? 'The file path and selected passage are attached to this conversation. Ask your question below.' : 'The file path is attached to this conversation. Ask your question below.') : 'Talk to your agent. Select part of any answer to ask about it in a linked conversation.';
-  el.emptyChat.querySelector('.starter-prompts').hidden = Boolean(chat?.sourceFile);
-  if (changedChat) el.transcript.querySelectorAll('.chat-message').forEach(node => node.remove());
-  const existing = new Map([...el.transcript.querySelectorAll('.chat-message')].map(node => [node.dataset.messageId, node]));
+  renderEmptyChat(chat, messages.length === 0);
+  if (changedChat) {
+    elements.transcript.querySelectorAll('.chat-message').forEach(node => node.remove());
+  }
+  const existing = new Map([...elements.transcript.querySelectorAll('.chat-message')].map(node => [node.dataset.messageId, node]));
   const retained = new Set();
   for (const message of messages) {
     let wrapper = existing.get(message.id);
     const isNew = !wrapper;
-    if (isNew) wrapper = document.createElement('article');
+    if (isNew) {
+      wrapper = document.createElement('article');
+    }
     retained.add(message.id);
     wrapper.className = 'chat-message ' + message.role + (message.status === 'error' ? ' error' : '');
     wrapper.dataset.messageId = message.id;
-    const children = appState.conversations.filter(child => child.parentId === chat?.id && child.parentTurnId === message.turnId && (!child.parentMessageId || child.parentMessageId === message.id));
-    const signature = JSON.stringify([message.text, message.status, message.turnId, children.map(child => [child.id, child.selectedQuote, child.selectedStart])]);
-    if (!isNew && wrapper.dataset.signature === signature) continue;
+    const children = appState.conversations.filter(child => (
+      child.parentId === chat?.id &&
+      child.parentTurnId === message.turnId &&
+      (!child.parentMessageId || child.parentMessageId === message.id)
+    ));
+    const signature = JSON.stringify([
+      message.text, message.status, message.turnId,
+      children.map(child => [child.id, child.selectedQuote, child.selectedStart])
+    ]);
+    if (!isNew && wrapper.dataset.signature === signature) {
+      continue;
+    }
     wrapper.dataset.signature = signature;
     wrapper.replaceChildren();
     if (message.role === 'assistant') {
-      if (message.turnId) wrapper.dataset.turnId = message.turnId;
+      if (message.turnId) {
+        wrapper.dataset.turnId = message.turnId;
+      }
       const body = document.createElement('div');
       body.className = 'message-body';
       body.innerHTML = safeMarkdown(message.text || (message.status === 'streaming' ? '…' : ''));
-      const unmatched = markLinkedPassages(body, message, children);
+      const unmatched = markLinkedPassages(body, message, children, branchPopup.open);
       wrapper.append(body);
       for (const child of unmatched) {
         const link = document.createElement('button');
         link.className = 'text-button';
         link.textContent = '↳ Follow-up: ' + child.selectedQuote.slice(0, 80);
-        link.onclick = () => openBranchPopup([child.id]);
+        link.onclick = () => branchPopup.open([child.id]);
         wrapper.append(link);
       }
       if (message.status === 'streaming') {
@@ -441,7 +518,12 @@ function renderChat(forceScroll = false) {
         branch.addEventListener('click', () => {
           if (selectedSpan?.messageId !== message.id) {
             const text = passageText(body);
-            selectedSpan = { turnId: message.turnId, messageId: message.id, start: text.length - text.trimStart().length, quote: text.trim().slice(0, 12000) };
+            selectedSpan = {
+              turnId: message.turnId,
+              messageId: message.id,
+              start: text.length - text.trimStart().length,
+              quote: text.trim().slice(0, 12000)
+            };
           }
           branchFromSelection();
         });
@@ -454,50 +536,73 @@ function renderChat(forceScroll = false) {
       bubble.textContent = message.text;
       wrapper.append(bubble);
     }
-    if (isNew) el.transcript.insertBefore(wrapper, el.emptyChat);
+    if (isNew) {
+      elements.transcript.insertBefore(wrapper, elements.emptyChat);
+    }
   }
-  for (const [id, node] of existing) if (!retained.has(id)) node.remove();
+  for (const [id, node] of existing) {
+    if (!retained.has(id)) {
+      node.remove();
+    }
+  }
   renderedChatId = activeChatId;
-  if (changedChat) el.transcript.scrollTop = scrollPositions.get(activeChatId) ?? el.transcript.scrollHeight;
-  else if (stickToBottom) el.transcript.scrollTop = el.transcript.scrollHeight;
+  if (changedChat) {
+    elements.transcript.scrollTop = scrollPositions.get(activeChatId) ?? elements.transcript.scrollHeight;
+  } else if (stickToBottom) {
+    elements.transcript.scrollTop = elements.transcript.scrollHeight;
+  }
   renderChatTree();
-  renderBranchPopup();
+  branchPopup.render();
   renderFilePreview();
 }
+
 async function selectChat(id) {
-  $('#branchPopup').close();
+  branchPopup.close();
   saveDraft();
-  if (activeChatId) scrollPositions.set(activeChatId, el.transcript.scrollTop);
+  if (activeChatId) {
+    scrollPositions.set(activeChatId, elements.transcript.scrollTop);
+  }
   activeChatId = id;
   const chat = currentChat();
-  if (!chat) return;
+  if (!chat) {
+    return;
+  }
   chat.lastUsedAt = new Date().toISOString();
   sessionWrite('activeChatId', id);
   selectedSpan = null;
-  el.selectionAction.hidden = true;
+  elements.selectionAction.hidden = true;
   restoreDraft();
   setEditorOpen(false);
   closeNavigation();
   renderChat();
 }
+
 function activateNav(which) {
   const files = which === 'files';
-  el.filesTab.classList.toggle('selected', files);
-  el.chatsTab.classList.toggle('selected', !files);
-  el.filesTab.setAttribute('aria-selected', String(files));
-  el.chatsTab.setAttribute('aria-selected', String(!files));
-  el.fileNav.hidden = !files;
-  el.chatNav.hidden = files;
+  elements.filesTab.classList.toggle('selected', files);
+  elements.chatsTab.classList.toggle('selected', !files);
+  elements.filesTab.setAttribute('aria-selected', String(files));
+  elements.chatsTab.setAttribute('aria-selected', String(!files));
+  elements.fileNav.hidden = !files;
+  elements.chatNav.hidden = files;
 }
+
+// Chat creation, branching and sending
+
 async function createChat() {
-  if (creatingChat) return;
+  if (creatingChat) {
+    return;
+  }
   saveDraft();
   const previousChatId = activeChatId;
   creatingChat = true;
   activeChatId = null;
   renderChat();
   try {
-    const result = await api('/api/chat/new', { method: 'POST', body: '{}' });
+    const result = await api('/api/chat/new', {
+      method: 'POST',
+      body: '{}'
+    });
     appState.conversations.push(result.chat);
     activeChatId = result.chat.id;
     sessionWrite('activeChatId', activeChatId);
@@ -511,48 +616,89 @@ async function createChat() {
   } finally {
     creatingChat = false;
     renderChat();
-    if (activeChatId) el.composer.focus();
+    if (activeChatId) {
+      elements.composer.focus();
+    }
   }
 }
+
 async function askAboutFile() {
-  if (!openedFile || fileDirty || creatingChat) return;
-  let span = selectedSpan?.filePath === openedFile ? selectedSpan : null;
-  if (fileEditing && el.editor.selectionEnd > el.editor.selectionStart) {
-    const start = el.editor.selectionStart, end = el.editor.selectionEnd;
-    span = { filePath: openedFile, start, end, quote: el.editor.value.slice(start, end).trim() };
+  if (!openedFile || fileDirty || creatingChat) {
+    return;
   }
-  if (span && (!span.quote || span.quote.length > 12000)) { showToast('Select between 1 and 12,000 characters.'); return; }
+  let span = selectedSpan?.filePath === openedFile ? selectedSpan : null;
+  if (fileEditing && elements.editor.selectionEnd > elements.editor.selectionStart) {
+    const start = elements.editor.selectionStart;
+    const end = elements.editor.selectionEnd;
+    span = {
+      filePath: openedFile,
+      start,
+      end,
+      quote: elements.editor.value.slice(start, end).trim()
+    };
+  }
+  if (span && (!span.quote || span.quote.length > 12000)) {
+    showToast('Select between 1 and 12,000 characters.');
+    return;
+  }
   saveDraft();
   const path = openedFile;
   creatingChat = true;
   selectedSpan = null;
-  el.selectionAction.hidden = true;
-  renderChat(); showEditor();
+  elements.selectionAction.hidden = true;
+  renderChat();
+  showEditor();
   try {
-    const result = await api('/api/chat/file', { method: 'POST', body: JSON.stringify({ path, wholeFile: !span,
-      start: span?.start, end: span?.end, selectedQuote: span?.quote }) });
+    const result = await api('/api/chat/file', {
+      method: 'POST',
+      body: JSON.stringify({
+        path,
+        wholeFile: !span,
+        start: span?.start,
+        end: span?.end,
+        selectedQuote: span?.quote
+      })
+    });
     appState.conversations.push(result.chat);
     await selectChat(result.chat.id);
     activateNav('chats');
     showToast('File linked. Ask your question below.');
-  } catch (error) { showToast(error.message); }
-  finally { creatingChat = false; renderChat(); showEditor(); el.composer.focus(); }
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    creatingChat = false;
+    renderChat();
+    showEditor();
+    elements.composer.focus();
+  }
 }
+
 async function branchFromSelection() {
-  if (selectedSpan?.filePath) { await askAboutFile(); return; }
-  if (!selectedSpan || !activeChatId || creatingChat) return;
+  if (selectedSpan?.filePath) {
+    await askAboutFile();
+    return;
+  }
+  if (!selectedSpan || !activeChatId || creatingChat) {
+    return;
+  }
   saveDraft();
   const parentId = activeChatId;
   const span = selectedSpan;
   selectedSpan = null;
-  el.selectionAction.hidden = true;
+  elements.selectionAction.hidden = true;
   creatingChat = true;
   renderChat();
-  el.turnState.textContent = 'Opening linked chat…';
+  elements.turnState.textContent = 'Opening linked chat…';
   try {
     const result = await api('/api/chat/branch', {
       method: 'POST',
-      body: JSON.stringify({ parentId, turnId: span.turnId, selectedQuote: span.quote, parentMessageId: span.messageId, selectedStart: span.start }),
+      body: JSON.stringify({
+        parentId,
+        turnId: span.turnId,
+        selectedQuote: span.quote,
+        parentMessageId: span.messageId,
+        selectedStart: span.start
+      })
     });
     appState.conversations.push(result.chat);
     activeChatId = result.chat.id;
@@ -562,264 +708,410 @@ async function branchFromSelection() {
     closeNavigation();
     activateNav('chats');
     showToast('New linked chat. Ask your question below.');
-  } catch (error) { showToast(error.message); }
-  finally {
+  } catch (error) {
+    showToast(error.message);
+  } finally {
     creatingChat = false;
     renderChat();
-    el.composer.focus();
+    elements.composer.focus();
   }
 }
-async function sendMessage(text = el.composer.value) {
+
+async function sendMessage(text = elements.composer.value) {
   const chat = currentChat();
-  if (!chat || chat.busy || creatingChat || !text.trim()) return;
+  if (!chat || chat.busy || creatingChat || !text.trim()) {
+    return;
+  }
   const question = text.trim();
-  if (chat.title === 'New chat') chat.title = question.replace(/\s+/g, ' ').slice(0, 48) || 'Research chat';
-  el.composer.value = '';
+  if (chat.title === 'New chat') {
+    chat.title = question.replace(/\s+/g, ' ').slice(0, 48) || 'Research chat';
+  }
+  elements.composer.value = '';
   sessionWrite('draft:' + chat.id, '');
   resizeComposer();
-  chat.messages.push({ id: localId(), role: 'user', text: question, createdAt: new Date().toISOString() });
-  chat.messages.push({ id: localId(), role: 'assistant', text: '', status: 'streaming' });
+  chat.messages.push({
+    id: localId(),
+    role: 'user',
+    text: question,
+    createdAt: new Date().toISOString()
+  });
+  chat.messages.push({
+    id: localId(),
+    role: 'assistant',
+    text: '',
+    status: 'streaming'
+  });
   chat.busy = true;
   pendingSends.add(chat.id);
   renderChat(true);
-  try { await api('/api/chat/send', { method: 'POST', body: JSON.stringify({ chatId: chat.id, text: question }) }); }
-  catch (error) {
+  try {
+    await api('/api/chat/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        chatId: chat.id,
+        text: question
+      })
+    });
+  } catch (error) {
     chat.busy = false;
     const last = chat.messages.at(-1);
-    if (last?.role === 'assistant') { last.status = 'error'; last.text = error.message; }
+    if (last?.role === 'assistant') {
+      last.status = 'error';
+      last.text = error.message;
+    }
     showToast(error.message);
-    if (activeChatId === chat.id && !el.composer.value) { el.composer.value = question; saveDraft(); resizeComposer(); }
+    if (activeChatId === chat.id && !elements.composer.value) {
+      elements.composer.value = question;
+      saveDraft();
+      resizeComposer();
+    }
     renderChat();
   } finally {
     pendingSends.delete(chat.id);
     refreshState().catch(() => {});
   }
 }
+
 async function stopResponse() {
   const chat = currentChat();
-  if (!chat?.busy) return;
-  try { await api('/api/chat/stop', { method: 'POST', body: JSON.stringify({ chatId: chat.id }) }); }
-  catch (error) { showToast(error.message); }
-}
-function handleEvent(event) {
-  if (event.type === 'agent-status') setAgentReady(event.ready, event.message || (event.ready ? 'Codex connected' : 'Agent offline'));
-  if (event.type === 'agent-delta') {
-    const chat = appState.conversations.find(item => item.id === event.chatId);
-    if (chat) {
-      let message = [...chat.messages].reverse().find(item => item.role === 'assistant' && (!item.turnId || item.turnId === event.turnId));
-      if (!message) {
-        message = { id: event.messageId || localId(), role: 'assistant', text: '', turnId: event.turnId, status: 'streaming' };
-        chat.messages.push(message);
-      }
-      message.turnId = event.turnId;
-      message.text += event.delta || '';
-      message.status = 'streaming';
-      if (chat.id === activeChatId) renderChat();
-    }
+  if (!chat?.busy) {
+    return;
   }
-  if (event.type === 'message-started') {
-    const chat = appState.conversations.find(item => item.id === event.chatId);
-    if (chat) {
-      const message = [...chat.messages].reverse().find(item => item.role === 'assistant' && item.status === 'streaming' && !item.turnId);
-      if (message) { message.id = event.assistantMessageId; message.turnId = event.turnId; }
-    }
+  try {
+    await api('/api/chat/stop', {
+      method: 'POST',
+      body: JSON.stringify({
+        chatId: chat.id
+      })
+    });
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+// Live server updates and permission requests
+
+function handleEvent(event) {
+  if (event.type === 'agent-status') {
+    setAgentReady(event.ready, event.message || (event.ready ? 'Codex connected' : 'Agent offline'));
+  }
+  const updatedChat = applyConversationEvent(appState.conversations, event, localId);
+  if (updatedChat?.id === activeChatId) {
+    renderChat();
   }
   if (event.type === 'turn-completed') {
-    const chat = appState.conversations.find(item => item.id === event.chatId);
-    if (chat) {
-      chat.busy = false;
-      const message = [...chat.messages].reverse().find(item => item.role === 'assistant' && (!event.turnId || item.turnId === event.turnId));
-      if (message) message.status = event.status === 'completed' ? 'complete' : event.status === 'interrupted' ? 'stopped' : 'error';
-      if (chat.id === activeChatId) renderChat();
-    }
     refreshState().catch(() => {});
   }
   if (event.type === 'workspace-changed') {
     renderDirectory();
-    if (openedFile && !fileDirty) openFile(openedFile, false);
+    if (openedFile && !fileDirty) {
+      openFile(openedFile, false);
+    }
   }
   if (event.type === 'approval-needed') {
-    if (!pendingApprovals.some(item => item.id === event.id)) pendingApprovals.push(event);
+    if (!pendingApprovals.some(item => item.id === event.id)) {
+      pendingApprovals.push(event);
+    }
     renderApproval();
   }
-  renderBranchPopup();
-  if (event.type === 'agent-log' && !appState.agentReady) setAgentReady(false, 'Agent starting…');
+  branchPopup.render();
+  if (event.type === 'agent-log' && !appState.agentReady) {
+    setAgentReady(false, 'Agent starting…');
+  }
 }
+
 function renderApproval() {
   const current = pendingApprovals[0];
-  el.approvalBar.hidden = !current;
-  if (!current) return;
+  elements.approvalBar.hidden = !current;
+  if (!current) {
+    return;
+  }
   const requested = current.params?.permissions ? 'Requested permissions: ' + JSON.stringify(current.params.permissions) : '';
   const command = current.params?.command?.join?.(' ') || current.params?.reason || current.params?.grantRoot || requested || current.method;
-  el.approvalDescription.textContent = String(command || 'The agent requested permission to use a tool.').slice(0, 180);
+  elements.approvalDescription.textContent = String(command || 'The agent requested permission to use a tool.').slice(0, 180);
 }
+
 async function resolveApproval(decision) {
   const current = pendingApprovals[0];
-  if (!current) return;
+  if (!current) {
+    return;
+  }
   try {
-    await api('/api/approval/' + encodeURIComponent(current.id), { method: 'POST', body: JSON.stringify({ decision }) });
+    await api('/api/approval/' + encodeURIComponent(current.id), {
+      method: 'POST',
+      body: JSON.stringify({
+        decision
+      })
+    });
     pendingApprovals.shift();
     renderApproval();
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    showToast(error.message);
+  }
 }
+
 async function refreshState() {
   const latest = await api('/api/state');
   appState.workspace = latest.workspace;
+  // A snapshot can lag a send; keep its optimistic messages until the POST settles.
   const old = new Map(appState.conversations.map(chat => [chat.id, chat]));
   appState.conversations = latest.conversations.map(chat => {
     const local = old.get(chat.id);
-    if (local && pendingSends.has(chat.id)) return local;
+    if (local && pendingSends.has(chat.id)) {
+      return local;
+    }
     return chat;
   });
-  el.workspace.textContent = latest.workspace;
+  elements.workspace.textContent = latest.workspace;
   setAgentReady(latest.agentReady);
   renderChat();
 }
+
+// Selection coordinates and contextual actions
+
 function showSelectionAction() {
-  if ($('#branchPopup').open) { el.selectionAction.hidden = true; return; }
+  if (branchPopup.isOpen) {
+    elements.selectionAction.hidden = true;
+    return;
+  }
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.toString().trim()) {
     selectedSpan = null;
-    $('#askFile').textContent = 'Ask about file ↗';
-    el.selectionAction.hidden = true;
+    query('#askFile').textContent = 'Ask about file ↗';
+    elements.selectionAction.hidden = true;
     return;
   }
   const range = selection.getRangeAt(0);
   const node = range.commonAncestorContainer;
-  const preview = $('#filePreview');
+  const preview = query('#filePreview');
   if (preview.contains(range.startContainer) && preview.contains(range.endContainer)) {
-    if (fileDirty) { el.selectionAction.hidden = true; return; }
+    if (fileDirty) {
+      elements.selectionAction.hidden = true;
+      return;
+    }
     const prefix = document.createRange();
-    prefix.selectNodeContents(preview); prefix.setEnd(range.startContainer, range.startOffset);
+    prefix.selectNodeContents(preview);
+    prefix.setEnd(range.startContainer, range.startOffset);
     const start = passageText(prefix.cloneContents()).length;
     const raw = passageText(range.cloneContents());
-    selectedSpan = { filePath: openedFile, start, end: start + raw.length, quote: raw.trim() };
+    selectedSpan = {
+      filePath: openedFile,
+      start,
+      end: start + raw.length,
+      quote: raw.trim()
+    };
     const rect = range.getBoundingClientRect();
-    el.selectionAction.hidden = false;
-    el.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 200)) + 'px';
-    el.selectionAction.style.top = Math.max(8, rect.top - 44) + 'px';
-    $('#askFile').textContent = 'Ask about selection ↗';
+    elements.selectionAction.hidden = false;
+    elements.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 200)) + 'px';
+    elements.selectionAction.style.top = Math.max(8, rect.top - 44) + 'px';
+    query('#askFile').textContent = 'Ask about selection ↗';
     return;
   }
-  const message = node.nodeType === Node.ELEMENT_NODE ? node.closest?.('.chat-message.assistant') : node.parentElement?.closest('.chat-message.assistant');
+  const message = node.nodeType === Node.ELEMENT_NODE
+    ? node.closest?.('.chat-message.assistant')
+    : node.parentElement?.closest('.chat-message.assistant');
   if (!message?.dataset.turnId || !message.closest('#transcript')) {
-    el.selectionAction.hidden = true;
+    elements.selectionAction.hidden = true;
     return;
   }
   const rect = range.getBoundingClientRect();
   const body = message.querySelector('.message-body');
-  if (!body?.contains(range.startContainer) || !body.contains(range.endContainer)) { el.selectionAction.hidden = true; return; }
+  if (!body?.contains(range.startContainer) || !body.contains(range.endContainer)) {
+    elements.selectionAction.hidden = true;
+    return;
+  }
   const prefix = document.createRange();
   prefix.selectNodeContents(body);
   prefix.setEnd(range.startContainer, range.startOffset);
   const raw = passageText(range.cloneContents());
   const quote = raw.trim().slice(0, 12000);
-  if (!quote) { el.selectionAction.hidden = true; return; }
-  selectedSpan = { quote, turnId: message.dataset.turnId, messageId: message.dataset.messageId,
-    start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length };
-  el.selectionAction.hidden = false;
-  el.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';
-  el.selectionAction.style.top = Math.max(8, rect.top - 39) + 'px';
+  if (!quote) {
+    elements.selectionAction.hidden = true;
+    return;
+  }
+  selectedSpan = {
+    quote,
+    turnId: message.dataset.turnId,
+    messageId: message.dataset.messageId,
+    start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length
+  };
+  elements.selectionAction.hidden = false;
+  elements.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';
+  elements.selectionAction.style.top = Math.max(8, rect.top - 39) + 'px';
 }
 
-$('#closeBranchPopup').addEventListener('click', () => $('#branchPopup').close());
-$('#openBranchChat').addEventListener('click', () => { if (popupChatId) selectChat(popupChatId); });
-$('#branchPopup').addEventListener('click', event => { if (event.target === $('#branchPopup')) { const rect = event.target.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close(); } });
+// Event registration by feature
 
-$('#askFile').addEventListener('pointerdown', event => event.preventDefault());
-$('#askFile').addEventListener('click', askAboutFile);
-$('#toggleFileEdit').addEventListener('click', () => { fileEditing = !fileEditing; selectedSpan = null; el.selectionAction.hidden = true; showEditor(); });
-for (const event of ['select', 'keyup', 'pointerup']) el.editor.addEventListener(event, () => {
-  $('#askFile').textContent = el.editor.selectionEnd > el.editor.selectionStart ? 'Ask about selection ↗' : 'Ask about file ↗';
-});
-el.filesTab.addEventListener('click', () => activateNav('files'));
-el.chatsTab.addEventListener('click', () => activateNav('chats'));
-$('#refreshFiles').addEventListener('click', () => renderDirectory());
-el.save.addEventListener('click', saveFile);
-el.editor.addEventListener('input', () => { fileDirty = true; showEditor(); updateGutter(); });
-el.editor.addEventListener('scroll', () => { el.lineNumbers.scrollTop = el.editor.scrollTop; });
-$('#newChatButton').addEventListener('click', createChat);
-$('#chatNewButton').addEventListener('click', createChat);
-$('#chatNavNew').addEventListener('click', createChat);
-$('#welcomeNewChat').addEventListener('click', createChat);
-$('#welcomeOpenFile').addEventListener('click', () => activateNav('files'));
-el.quoteParent.addEventListener('click', openChatSource);
-$('#composerForm').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
-el.composer.addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !currentChat()?.busy) { event.preventDefault(); sendMessage(); }
-});
-el.composer.addEventListener('input', () => { saveDraft(); resizeComposer(); });
-$('#stopButton').addEventListener('click', stopResponse);
-$('#closeEditor').addEventListener('click', () => setEditorOpen(false));
-$('#toggleEditor').addEventListener('click', () => {
-  const open = !document.body.classList.contains('editor-open');
-  setEditorOpen(open);
-  if (open) {
-    activateNav('files');
-    if (window.innerWidth <= 760) { document.body.classList.add('sidebar-open'); $('#sidebarScrim').hidden = false; }
-    else document.body.classList.remove('sidebar-collapsed');
+function bindFileEvents() {
+  query('#askFile').addEventListener('pointerdown', event => event.preventDefault());
+  query('#askFile').addEventListener('click', askAboutFile);
+  query('#toggleFileEdit').addEventListener('click', () => {
+    fileEditing = !fileEditing;
+    selectedSpan = null;
+    elements.selectionAction.hidden = true;
+    showEditor();
+  });
+  for (const event of ['select', 'keyup', 'pointerup']) {
+    elements.editor.addEventListener(event, () => {
+      const hasSelection = elements.editor.selectionEnd > elements.editor.selectionStart;
+      query('#askFile').textContent = hasSelection ? 'Ask about selection ↗' : 'Ask about file ↗';
+    });
   }
-});
-$('#sidebarToggle').addEventListener('click', () => {
-  const mobile = window.innerWidth <= 760;
-  document.body.classList.toggle(mobile ? 'sidebar-open' : 'sidebar-collapsed');
-  $('#sidebarScrim').hidden = !mobile || !document.body.classList.contains('sidebar-open');
-  $('#sidebarToggle').setAttribute('aria-expanded', String(mobile ? document.body.classList.contains('sidebar-open') : !document.body.classList.contains('sidebar-collapsed')));
-});
-$('#sidebarScrim').addEventListener('click', closeNavigation);
-document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeNavigation(); setEditorOpen(false); } });
-window.visualViewport?.addEventListener('resize', fitViewport);
-window.visualViewport?.addEventListener('scroll', fitViewport);
-window.addEventListener('resize', fitViewport);
-fitViewport();
-closeNavigation();
-for (const prompt of document.querySelectorAll('[data-prompt]')) prompt.addEventListener('click', () => sendMessage(prompt.dataset.prompt));
-el.selectionAction.addEventListener('pointerdown', event => event.preventDefault());
-el.selectionAction.addEventListener('click', branchFromSelection);
-$('#allowApproval').addEventListener('click', () => resolveApproval('allow'));
-$('#declineApproval').addEventListener('click', () => resolveApproval('deny'));
-document.addEventListener('selectionchange', showSelectionAction);
-document.addEventListener('scroll', () => { el.selectionAction.hidden = true; }, true);
+  elements.filesTab.addEventListener('click', () => activateNav('files'));
+  elements.chatsTab.addEventListener('click', () => activateNav('chats'));
+  query('#refreshFiles').addEventListener('click', () => renderDirectory());
+  elements.save.addEventListener('click', saveFile);
+  elements.editor.addEventListener('input', () => {
+    fileDirty = true;
+    showEditor();
+    updateGutter();
+  });
+  elements.editor.addEventListener('scroll', () => {
+    elements.lineNumbers.scrollTop = elements.editor.scrollTop;
+  });
+}
+
+function bindChatEvents() {
+  query('#newChatButton').addEventListener('click', createChat);
+  query('#chatNewButton').addEventListener('click', createChat);
+  query('#chatNavNew').addEventListener('click', createChat);
+  query('#welcomeNewChat').addEventListener('click', createChat);
+  query('#welcomeOpenFile').addEventListener('click', () => activateNav('files'));
+  elements.quoteParent.addEventListener('click', openChatSource);
+  query('#composerForm').addEventListener('submit', event => {
+    event.preventDefault();
+    sendMessage();
+  });
+  elements.composer.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !currentChat()?.busy) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+  elements.composer.addEventListener('input', () => {
+    saveDraft();
+    resizeComposer();
+  });
+  query('#stopButton').addEventListener('click', stopResponse);
+}
+
+function bindLayoutEvents() {
+  query('#closeEditor').addEventListener('click', () => setEditorOpen(false));
+  query('#toggleEditor').addEventListener('click', () => {
+    const open = !document.body.classList.contains('editor-open');
+    setEditorOpen(open);
+    if (open) {
+      activateNav('files');
+      if (window.innerWidth <= 760) {
+        document.body.classList.add('sidebar-open');
+        query('#sidebarScrim').hidden = false;
+      } else {
+        document.body.classList.remove('sidebar-collapsed');
+      }
+    }
+  });
+  query('#sidebarToggle').addEventListener('click', () => {
+    const mobile = window.innerWidth <= 760;
+    document.body.classList.toggle(mobile ? 'sidebar-open' : 'sidebar-collapsed');
+    query('#sidebarScrim').hidden = !mobile || !document.body.classList.contains('sidebar-open');
+    const expanded = mobile
+      ? document.body.classList.contains('sidebar-open')
+      : !document.body.classList.contains('sidebar-collapsed');
+    query('#sidebarToggle').setAttribute('aria-expanded', String(expanded));
+  });
+  query('#sidebarScrim').addEventListener('click', closeNavigation);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      closeNavigation();
+      setEditorOpen(false);
+    }
+  });
+  window.visualViewport?.addEventListener('resize', fitViewport);
+  window.visualViewport?.addEventListener('scroll', fitViewport);
+  window.addEventListener('resize', fitViewport);
+}
+
+function bindSelectionAndApprovalEvents() {
+  for (const prompt of document.querySelectorAll('[data-prompt]')) {
+    prompt.addEventListener('click', () => sendMessage(prompt.dataset.prompt));
+  }
+  elements.selectionAction.addEventListener('pointerdown', event => event.preventDefault());
+  elements.selectionAction.addEventListener('click', branchFromSelection);
+  query('#allowApproval').addEventListener('click', () => resolveApproval('allow'));
+  query('#declineApproval').addEventListener('click', () => resolveApproval('deny'));
+  document.addEventListener('selectionchange', showSelectionAction);
+  document.addEventListener('scroll', () => {
+    elements.selectionAction.hidden = true;
+  }, true);
+}
+
+// Initial load and event-stream connection
 
 async function boot() {
-  if (booting) return;
+  if (booting) {
+    return;
+  }
   booting = true;
   try {
-  const latest = await api('/api/state');
-  appState.workspace = latest.workspace;
-  appState.conversations = latest.conversations;
-  el.workspace.textContent = latest.workspace;
-  setAgentReady(latest.agentReady);
-  await renderDirectory();
-  renderChatTree();
-  showEditor();
-  activateNav('chats');
-  const selected = appState.conversations.find(chat => chat.id === sessionRead('activeChatId')) || [...appState.conversations].sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))[0];
-  if (selected) activeChatId = selected.id;
-  else await createChat();
-  restoreDraft();
-  renderChat();
-  connectionNotice();
-  events?.close();
-  events = new EventSource('/api/events' + (accessKey ? '?key=' + encodeURIComponent(accessKey) : ''));
-  events.onopen = () => {
-    pendingApprovals.length = 0;
-    renderApproval();
+    const latest = await api('/api/state');
+    appState.workspace = latest.workspace;
+    appState.conversations = latest.conversations;
+    elements.workspace.textContent = latest.workspace;
+    setAgentReady(latest.agentReady);
+    await renderDirectory();
+    renderChatTree();
+    showEditor();
+    activateNav('chats');
+    const savedChatId = sessionRead('activeChatId');
+    const selected = appState.conversations.find(chat => chat.id === savedChatId) ||
+      [...appState.conversations].sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))[0];
+    if (selected) {
+      activeChatId = selected.id;
+    } else {
+      await createChat();
+    }
+    restoreDraft();
+    renderChat();
     connectionNotice();
-    refreshState().catch(error => connectionNotice(error.message));
-  };
-  events.onerror = () => connectionNotice('Connection lost. Reconnecting… Your draft is kept in this tab.');
-  events.onmessage = event => {
-    try { handleEvent(JSON.parse(event.data)); }
-    catch (error) { console.error('Could not handle app event', error); }
-  };
+    events?.close();
+    events = new EventSource('/api/events' + (accessKey ? '?key=' + encodeURIComponent(accessKey) : ''));
+    events.onopen = () => {
+      pendingApprovals.length = 0;
+      renderApproval();
+      connectionNotice();
+      refreshState().catch(error => connectionNotice(error.message));
+    };
+    events.onerror = () => connectionNotice('Connection lost. Reconnecting… Your draft is kept in this tab.');
+    events.onmessage = event => {
+      try {
+        handleEvent(JSON.parse(event.data));
+      } catch (error) {
+        console.error('Could not handle app event', error);
+      }
+    };
   } catch (error) {
     setAgentReady(false, 'Connection error');
     connectionNotice(error.message);
-  } finally { booting = false; }
+  } finally {
+    booting = false;
+  }
 }
-$('#reconnectButton').addEventListener('click', boot);
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshState().catch(error => connectionNotice(error.message));
-});
-boot();
+
+// Register UI handlers once; reconnects only reload data and replace the event stream.
+function initialize() {
+  bindFileEvents();
+  bindChatEvents();
+  bindLayoutEvents();
+  bindSelectionAndApprovalEvents();
+  query('#reconnectButton').addEventListener('click', boot);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshState().catch(error => connectionNotice(error.message));
+    }
+  });
+  fitViewport();
+  closeNavigation();
+  boot();
+}
+
+initialize();
