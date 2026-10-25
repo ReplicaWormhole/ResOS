@@ -96,6 +96,137 @@ function safeMarkdown(value) {
   });
   return text.replace(/\n/g, '<br>').replace(/\u0000FENCE(\d+)\u0000/g, (_, index) => fences[Number(index)] || '');
 }
+// A single text coordinate system for selections and rendered Markdown, including line breaks.
+function passageText(root) {
+  let text = '';
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeType === Node.TEXT_NODE) text += walker.currentNode.data;
+    else if (walker.currentNode.nodeName === 'BR') text += '\n';
+  }
+  return text;
+}
+function passageRange(text, chat, message) {
+  const quote = chat.selectedQuote || '';
+  if (!quote) return null;
+  if (Number.isInteger(chat.selectedStart) && chat.parentMessageId === message.id &&
+      text.slice(chat.selectedStart, chat.selectedStart + quote.length) === quote) {
+    return [chat.selectedStart, chat.selectedStart + quote.length];
+  }
+  const start = text.indexOf(quote);
+  if (start >= 0) return [start, start + quote.length];
+  // Older selections may use browser-inserted newlines or raw Markdown.
+  const normalized = [], positions = [];
+  for (let i = 0; i < text.length; i++) {
+    const char = /\s/.test(text[i]) ? ' ' : text[i];
+    if (char === ' ' && normalized.at(-1) === ' ') continue;
+    normalized.push(char); positions.push(i);
+  }
+  const needle = quote.replace(/\s+/g, ' ').trim();
+  const index = normalized.join('').indexOf(needle);
+  return index < 0 || !needle ? null : [positions[index], positions[index + needle.length - 1] + 1];
+}
+let popupChatIds = [];
+let popupChatId = null;
+function renderBranchPopup() {
+  const dialog = $('#branchPopup');
+  if (!dialog.open) return;
+  const chats = popupChatIds.map(id => appState.conversations.find(chat => chat.id === id)).filter(Boolean);
+  const chat = chats.find(chat => chat.id === popupChatId) || chats[0];
+  if (!chat) { dialog.close(); return; }
+  popupChatId = chat.id;
+  $('#branchPopupTitle').textContent = chat.title;
+  const choices = $('#branchPopupChoices');
+  const choiceSignature = JSON.stringify([chats.map(item => [item.id, item.title]), chat.id]);
+  if (choices.dataset.signature !== choiceSignature) {
+    choices.dataset.signature = choiceSignature;
+    choices.replaceChildren();
+    if (chats.length > 1) for (const item of chats) {
+      const button = document.createElement('button');
+      button.className = 'button button-small';
+      button.textContent = item.title;
+      button.setAttribute('aria-pressed', String(item.id === chat.id));
+      button.onclick = () => { popupChatId = item.id; renderBranchPopup(); };
+      choices.append(button);
+    }
+  }
+  $('#branchPopupQuote').textContent = chat.selectedQuote;
+  const transcript = $('#branchPopupTranscript');
+  const oldScrollTop = transcript.scrollTop;
+  const bottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
+  const signature = JSON.stringify([chat.id, chat.messages, chat.busy]);
+  if (transcript.dataset.signature !== signature) {
+    const switched = transcript.dataset.chatId !== chat.id;
+    transcript.dataset.signature = signature;
+    transcript.dataset.chatId = chat.id;
+    transcript.replaceChildren();
+    for (const message of chat.messages) {
+      const article = document.createElement('article');
+      article.className = 'chat-message ' + message.role;
+      const body = document.createElement('div');
+      body.className = message.role === 'assistant' ? 'message-body' : 'message-bubble';
+      if (message.role === 'assistant') body.innerHTML = safeMarkdown(message.text || (chat.busy ? 'Thinking…' : ''));
+      else body.textContent = message.text;
+      article.append(body); transcript.append(article);
+    }
+    if (!chat.messages.length) transcript.textContent = 'No messages yet. Open this chat to ask your question.';
+    transcript.scrollTop = switched || bottom ? transcript.scrollHeight : oldScrollTop;
+  }
+}
+function openBranchPopup(ids) {
+  popupChatIds = ids;
+  popupChatId = ids[0];
+  el.selectionAction.hidden = true;
+  const dialog = $('#branchPopup');
+  if (!dialog.open) dialog.showModal();
+  renderBranchPopup();
+}
+function markLinkedPassages(body, message, children) {
+  if (!children.length) return [];
+  const text = passageText(body);
+  const ranges = children.map(chat => ({ chat, range: passageRange(text, chat, message) })).filter(item => item.range);
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  const nodes = [];
+  let offset = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.nodeType === Node.TEXT_NODE) { nodes.push({ node, start: offset }); offset += node.length; }
+    else if (node.nodeName === 'BR') offset++;
+  }
+  for (const { node, start } of nodes) {
+    const cuts = new Set([0, node.length]);
+    for (const { range: [a, b] } of ranges) {
+      if (a < start + node.length && b > start) { cuts.add(Math.max(0, a - start)); cuts.add(Math.min(node.length, b - start)); }
+    }
+    const points = [...cuts].sort((a, b) => a - b);
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      const linked = ranges.filter(item => item.range[0] < start + b && item.range[1] > start + a);
+      const textNode = document.createTextNode(node.data.slice(a, b));
+      if (!linked.length) { fragment.append(textNode); continue; }
+      const mark = document.createElement('mark');
+      mark.className = 'linked-passage';
+      mark.tabIndex = 0;
+      mark.setAttribute('role', 'button');
+      mark.setAttribute('aria-haspopup', 'dialog');
+      mark.title = 'View ' + linked.length + ' linked chat' + (linked.length > 1 ? 's' : '');
+      mark.setAttribute('aria-label', mark.title + ': ' + textNode.data);
+      const open = event => {
+        event.preventDefault(); event.stopPropagation();
+        if (window.getSelection()?.toString()) return;
+        openBranchPopup(linked.map(item => item.chat.id));
+      };
+      mark.addEventListener('click', open);
+      mark.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { window.getSelection()?.removeAllRanges(); open(event); }
+      });
+      mark.append(textNode); fragment.append(mark);
+    }
+    node.replaceWith(fragment);
+  }
+  return children.filter(chat => !ranges.some(item => item.chat.id === chat.id));
+}
 function showToast(text) {
   el.toast.textContent = text;
   el.toast.classList.add('show');
@@ -231,7 +362,8 @@ function renderChat(forceScroll = false) {
     retained.add(message.id);
     wrapper.className = 'chat-message ' + message.role + (message.status === 'error' ? ' error' : '');
     wrapper.dataset.messageId = message.id;
-    const signature = JSON.stringify([message.text, message.status, message.turnId]);
+    const children = appState.conversations.filter(child => child.parentId === chat?.id && child.parentTurnId === message.turnId && (!child.parentMessageId || child.parentMessageId === message.id));
+    const signature = JSON.stringify([message.text, message.status, message.turnId, children.map(child => [child.id, child.selectedQuote, child.selectedStart])]);
     if (!isNew && wrapper.dataset.signature === signature) continue;
     wrapper.dataset.signature = signature;
     wrapper.replaceChildren();
@@ -240,7 +372,15 @@ function renderChat(forceScroll = false) {
       const body = document.createElement('div');
       body.className = 'message-body';
       body.innerHTML = safeMarkdown(message.text || (message.status === 'streaming' ? '…' : ''));
+      const unmatched = markLinkedPassages(body, message, children);
       wrapper.append(body);
+      for (const child of unmatched) {
+        const link = document.createElement('button');
+        link.className = 'text-button';
+        link.textContent = '↳ Follow-up: ' + child.selectedQuote.slice(0, 80);
+        link.onclick = () => openBranchPopup([child.id]);
+        wrapper.append(link);
+      }
       if (message.status === 'streaming') {
         const meta = document.createElement('div');
         meta.className = 'message-meta';
@@ -253,8 +393,10 @@ function renderChat(forceScroll = false) {
         branch.type = 'button';
         branch.textContent = 'Ask about this ↗';
         branch.addEventListener('click', () => {
-          const selected = selectedSpan?.turnId === message.turnId ? selectedSpan.quote : message.text;
-          selectedSpan = { turnId: message.turnId, quote: selected.slice(0, 12000) };
+          if (selectedSpan?.messageId !== message.id) {
+            const text = passageText(body);
+            selectedSpan = { turnId: message.turnId, messageId: message.id, start: text.length - text.trimStart().length, quote: text.trim().slice(0, 12000) };
+          }
           branchFromSelection();
         });
         actions.append(branch);
@@ -273,8 +415,10 @@ function renderChat(forceScroll = false) {
   if (changedChat) el.transcript.scrollTop = scrollPositions.get(activeChatId) ?? el.transcript.scrollHeight;
   else if (stickToBottom) el.transcript.scrollTop = el.transcript.scrollHeight;
   renderChatTree();
+  renderBranchPopup();
 }
 async function selectChat(id) {
+  $('#branchPopup').close();
   saveDraft();
   if (activeChatId) scrollPositions.set(activeChatId, el.transcript.scrollTop);
   activeChatId = id;
@@ -336,7 +480,7 @@ async function branchFromSelection() {
   try {
     const result = await api('/api/chat/branch', {
       method: 'POST',
-      body: JSON.stringify({ parentId, turnId: span.turnId, selectedQuote: span.quote }),
+      body: JSON.stringify({ parentId, turnId: span.turnId, selectedQuote: span.quote, parentMessageId: span.messageId, selectedStart: span.start }),
     });
     appState.conversations.push(result.chat);
     activeChatId = result.chat.id;
@@ -426,6 +570,7 @@ function handleEvent(event) {
     if (!pendingApprovals.some(item => item.id === event.id)) pendingApprovals.push(event);
     renderApproval();
   }
+  renderBranchPopup();
   if (event.type === 'agent-log' && !appState.agentReady) setAgentReady(false, 'Agent starting…');
 }
 function renderApproval() {
@@ -459,6 +604,7 @@ async function refreshState() {
   renderChat();
 }
 function showSelectionAction() {
+  if ($('#branchPopup').open) { el.selectionAction.hidden = true; return; }
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.toString().trim()) {
     el.selectionAction.hidden = true;
@@ -472,11 +618,24 @@ function showSelectionAction() {
     return;
   }
   const rect = range.getBoundingClientRect();
-  selectedSpan = { quote: selection.toString().trim().slice(0, 12000), turnId: message.dataset.turnId };
+  const body = message.querySelector('.message-body');
+  if (!body?.contains(range.startContainer) || !body.contains(range.endContainer)) { el.selectionAction.hidden = true; return; }
+  const prefix = document.createRange();
+  prefix.selectNodeContents(body);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  const raw = passageText(range.cloneContents());
+  const quote = raw.trim().slice(0, 12000);
+  if (!quote) { el.selectionAction.hidden = true; return; }
+  selectedSpan = { quote, turnId: message.dataset.turnId, messageId: message.dataset.messageId,
+    start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length };
   el.selectionAction.hidden = false;
   el.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';
   el.selectionAction.style.top = Math.max(8, rect.top - 39) + 'px';
 }
+
+$('#closeBranchPopup').addEventListener('click', () => $('#branchPopup').close());
+$('#openBranchChat').addEventListener('click', () => { if (popupChatId) selectChat(popupChatId); });
+$('#branchPopup').addEventListener('click', event => { if (event.target === $('#branchPopup')) { const rect = event.target.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close(); } });
 
 el.filesTab.addEventListener('click', () => activateNav('files'));
 el.chatsTab.addEventListener('click', () => activateNav('chats'));

@@ -160,3 +160,17 @@ body.sidebar-collapsed.editor-open .ide-grid { grid-template-columns: minmax(300
 }
 @media (max-height: 500px) { .chat-footnote { display: none; } .chat-header { min-height: 44px; padding-top: 4px; padding-bottom: 4px; } #composer { min-height: 45px; height: 50px; } .composer-bottom { padding-bottom: 7px; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.linked-passage { background: #e8f1cd; color: inherit; border-bottom: 2px dotted #77994c; cursor: pointer; border-radius: 2px; }
+.linked-passage:hover, .linked-passage:focus-visible { background: #d8e9ae; outline: 2px solid #77994c; outline-offset: 2px; }
+.branch-popup { width: min(720px, calc(100vw - 24px)); max-height: calc(var(--app-height, 100dvh) - 32px); padding: 0; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); box-shadow: 0 20px 80px #20342b40; }
+.branch-popup[open] { display: flex; flex-direction: column; }
+.branch-popup::backdrop { background: #20342b55; }
+.branch-popup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.branch-popup-header h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.branch-popup-choices { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px; max-height: 90px; overflow: auto; flex-shrink: 0; }
+.branch-popup-choices:not(:empty) { padding-top: 12px; }
+.branch-popup-choices [aria-pressed="true"] { background: var(--teal-pale); border-color: var(--teal); }
+.branch-popup-quote { flex-shrink: 0; max-height: 90px; overflow: auto; margin: 14px 18px 0; border-left: 3px solid #9fb777; padding-left: 12px; color: var(--muted); white-space: pre-wrap; }
+.branch-popup-transcript { min-height: 80px; overflow: auto; overscroll-behavior: contain; padding: 22px 18px 0; }
+.branch-popup footer { padding: 12px 18px; border-top: 1px solid var(--line); }

@@ -98,6 +98,13 @@
   </main>
   <button id="sidebarScrim" class="sidebar-scrim" aria-label="Close navigation" hidden></button>
   <button id="selectionAction" class="selection-action" hidden>Ask about selection <span>↗</span></button>
+  <dialog id="branchPopup" class="branch-popup" aria-labelledby="branchPopupTitle">
+    <header class="branch-popup-header"><h2 id="branchPopupTitle">Linked chat</h2><button id="closeBranchPopup" class="icon-button" aria-label="Close linked chat">×</button></header>
+    <div id="branchPopupChoices" class="branch-popup-choices"></div>
+    <blockquote id="branchPopupQuote" class="branch-popup-quote"></blockquote>
+    <div id="branchPopupTranscript" class="branch-popup-transcript" role="region" aria-label="Linked conversation"></div>
+    <footer><button id="openBranchChat" class="button button-primary">Open chat to continue ↗</button></footer>
+  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/public/app.js"></script>
 </body>

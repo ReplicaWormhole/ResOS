@@ -417,6 +417,10 @@ const server = http.createServer(async (request, response) => {
       });
       const title = quote.replace(/\s+/g, ' ').slice(0, 42);
       const chat = { id, workspace, codexThreadId: result.thread.id, title: 'About: ' + title + (quote.length > 42 ? '…' : ''), parentId: parent.id, selectedQuote: quote, parentTurnId: turnId, createdAt: new Date().toISOString(), lastUsedAt: new Date().toISOString(), messages: [] };
+      if (typeof body.parentMessageId === 'string' && Number.isInteger(body.selectedStart) && body.selectedStart >= 0) {
+        const source = parent.messages.find(message => message.id === body.parentMessageId && message.role === 'assistant' && message.turnId === turnId);
+        if (source) { chat.parentMessageId = source.id; chat.selectedStart = body.selectedStart; }
+      }
       state.conversations.push(chat);
       await persist();
       sendJson(response, 201, { chat });

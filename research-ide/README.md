@@ -12,6 +12,15 @@ editor has a close button that returns to chat. You can keep drafting while the
 agent responds, stop a response, and branch using selected text or **Ask about
 this** below an answer. Drafts stay separate per chat within the browser tab.
 
+Passages with linked follow-up chats are highlighted in the original answer.
+Click or tap a highlight to read the follow-up in a popup, then choose **Open chat
+to continue** to reply. Close the popup with ×, Escape, or a tap outside it to
+keep reading the original. Overlapping follow-ups offer a chat selector. Existing
+saved quotes receive highlights too; older quotes without an exact match appear
+as a follow-up button under the answer. New selections record their position so
+repeated phrases can be distinguished. Older selections only stored the quote,
+so a repeated phrase in an older answer is matched to its first occurrence.
+
 ## Run
 
 Requires Node.js and the Codex CLI installed and signed in on this computer.

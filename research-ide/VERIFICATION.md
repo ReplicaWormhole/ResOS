@@ -36,3 +36,29 @@ iPad Safari keyboard was not controlled from this machine. The user service is
 transient: it survives this chat session but does not start automatically after
 a computer reboot. Synthetic verification chats remain in ignored local state.
 `VERIFY.txt` is the retained fixture from the original file-save check.
+
+
+## Linked passage markers, 25 October 2026
+
+Verified the existing “urrent wo” follow-up through the live Wi-Fi interface:
+the original answer highlights that exact fragment, tapping it opens the saved
+question and answer in a modal, and “Open chat to continue” switches to the child.
+Escape closes the popup and returns focus to the marker in the parent. Repeated
+the marker/popup check after restarting the service and reloading the page.
+No verification conversations were created for this change.
+
+`node --test research-ide/tests/passages.test.mjs` passes five focused tests:
+exact offsets for repeated phrases, legacy quote/whitespace matching, spans
+across formatting and line breaks with overlapping chats, marking only the
+second repeated phrase, and fallback for unmatched older Markdown quotes.
+The test harness checks the actual rendering helpers with a small DOM model;
+it does not replace the live browser checks. `node --check` passes for the client
+and server, and `git diff --check` passes.
+
+Adversarial diff review found and fixed loss of popup reading position on live
+updates and focus loss from rebuilding the overlapping-chat selector. No blocking
+findings remain. Physical iPad Safari, browser text-selection gestures, and the
+new selection-position persistence path were not exercised end to end. Older
+ambiguous repeated quotes use the first occurrence because their original
+position was never stored. New position metadata uses the existing ignored
+local state file. No dependencies were added.
