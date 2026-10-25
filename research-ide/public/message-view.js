@@ -1,4 +1,4 @@
-import { safeMarkdown } from './markdown.js';
+import { safeMarkdown, safePlainMath } from './markdown.js';
 import { markLinkedPassages } from './passages.js';
 
 // Both views render the same saved nodes and expose the same notebook actions.
@@ -15,7 +15,7 @@ export function renderMessage(article, { chat, message, conversations, onOpen, o
   const body = document.createElement('div');
   body.className = message.role === 'assistant' ? 'message-body' : 'message-bubble';
   if (message.role === 'assistant') body.innerHTML = safeMarkdown(message.text || (message.status === 'queued' ? 'Queued…' : 'Thinking…'));
-  else body.textContent = message.text;
+  else body.innerHTML = safePlainMath(message.text);
   const children = linkedChats(conversations, chat, message);
   const unmatched = markLinkedPassages(body, message, children, onOpen);
   article.append(body);
@@ -32,7 +32,7 @@ export function renderMessage(article, { chat, message, conversations, onOpen, o
     aside.className = 'node-annotation';
     const label = document.createElement('strong');
     label.textContent = 'Your note' + (note.revisionId !== message.revisionId ? ' · earlier revision' : '');
-    const text = document.createElement('div'); text.textContent = note.text;
+    const text = document.createElement('div'); text.innerHTML = safePlainMath(note.text);
     aside.append(label, text); article.append(aside);
   }
   const actions = document.createElement('div');

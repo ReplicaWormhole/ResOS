@@ -210,3 +210,11 @@ body.sidebar-collapsed.editor-open .ide-grid { grid-template-columns: minmax(300
 #nodeEditorError { color: #a25740; }
 .branch-popup-header h2 { flex: 1; }
 .message-actions { flex-wrap: wrap; }
+
+.math-expression { white-space: normal; }
+.math-expression.math-display { display: block; max-width: 100%; overflow-x: auto; padding: 4px 0; }
+.math-expression .katex-display { margin: .6em 0; }
+.message-bubble { min-width: 0; }
+.message-bubble pre, .message-body pre { max-width: 100%; overflow-x: auto; }
+.math-error, .katex-error { white-space: pre-wrap; overflow-wrap: anywhere; }
+.linked-passage .math-expression { background: inherit; }

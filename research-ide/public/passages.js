@@ -1,15 +1,33 @@
-// A single text coordinate system for selections and rendered Markdown, including line breaks.
-export function passageText(root) {
-  let text = '';
+// Math is one atomic source unit: KaTeX's visual and accessibility trees must
+// not duplicate text or change the saved selection offsets.
+function sourceUnits(root) {
+  const units = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  let math = null, offset = 0;
   while (walker.nextNode()) {
-    if (walker.currentNode.nodeType === Node.TEXT_NODE) {
-      text += walker.currentNode.data;
-    } else if (walker.currentNode.nodeName === 'BR') {
-      text += '\n';
-    }
+    const node = walker.currentNode;
+    if (math?.contains(node)) continue;
+    const source = node.getAttribute?.('data-math-source');
+    let text;
+    if (source != null) { math = node; text = source; }
+    else if (node.nodeType === Node.TEXT_NODE) text = node.data;
+    else if (node.nodeName === 'BR') text = '\n';
+    else continue;
+    units.push({ node, start: offset, text, math: source != null }); offset += text.length;
   }
-  return text;
+  return units;
+}
+export function passageText(root) { return sourceUnits(root).map(unit => unit.text).join(''); }
+export function selectedPassage(body, range) {
+  const expanded = range.cloneRange();
+  const element = node => node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const startMath = element(range.startContainer)?.closest?.('[data-math-source]');
+  const endMath = element(range.endContainer)?.closest?.('[data-math-source]');
+  if (startMath && body.contains(startMath)) expanded.setStartBefore(startMath);
+  if (endMath && body.contains(endMath)) expanded.setEndAfter(endMath);
+  const prefix = document.createRange(); prefix.selectNodeContents(body); prefix.setEnd(expanded.startContainer, expanded.startOffset);
+  const raw = passageText(expanded.cloneContents());
+  return { quote: raw.trim(), start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length };
 }
 
 export function passageRange(text, chat, message) {
@@ -57,22 +75,17 @@ export function markLinkedPassages(body, message, children, onOpen) {
     chat,
     range: passageRange(text, chat, message)
   })).filter(item => item.range);
-  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  const nodes = [];
-  let offset = 0;
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    if (node.nodeType === Node.TEXT_NODE) {
-      nodes.push({
-        node,
-        start: offset
-      });
-      offset += node.length;
-    } else if (node.nodeName === 'BR') {
-      offset++;
+  const nodes = sourceUnits(body);
+  for (const { node, start, text: source, math } of nodes) {
+    if (math) {
+      const linked = ranges.filter(item => item.range[0] < start + source.length && item.range[1] > start);
+      if (linked.length) {
+        const mark = makeMark(linked, source, onOpen);
+        node.replaceWith(mark); mark.append(node);
+      }
+      continue;
     }
-  }
-  for (const { node, start } of nodes) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
     const cuts = new Set([0, node.length]);
     for (const { range: [a, b] } of ranges) {
       if (a < start + node.length && b > start) {
@@ -91,13 +104,23 @@ export function markLinkedPassages(body, message, children, onOpen) {
         fragment.append(textNode);
         continue;
       }
+      const mark = makeMark(linked, textNode.data, onOpen);
+      mark.append(textNode);
+      fragment.append(mark);
+    }
+    node.replaceWith(fragment);
+  }
+  return children.filter(chat => !ranges.some(item => item.chat.id === chat.id));
+}
+
+function makeMark(linked, label, onOpen) {
       const mark = document.createElement('mark');
       mark.className = 'linked-passage';
       mark.tabIndex = 0;
       mark.setAttribute('role', 'button');
       mark.setAttribute('aria-haspopup', 'dialog');
       mark.title = 'View ' + linked.length + ' linked chat' + (linked.length > 1 ? 's' : '');
-      mark.setAttribute('aria-label', mark.title + ': ' + textNode.data);
+      mark.setAttribute('aria-label', mark.title + ': ' + label);
       const open = event => {
         event.preventDefault();
         event.stopPropagation();
@@ -113,10 +136,5 @@ export function markLinkedPassages(body, message, children, onOpen) {
           open(event);
         }
       });
-      mark.append(textNode);
-      fragment.append(mark);
-    }
-    node.replaceWith(fragment);
-  }
-  return children.filter(chat => !ranges.some(item => item.chat.id === chat.id));
+  return mark;
 }

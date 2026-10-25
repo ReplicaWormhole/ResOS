@@ -478,7 +478,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname.startsWith('/public/')) {
       const target = path.resolve(publicDir, url.pathname.slice('/public/'.length));
       if (!inside(publicDir, target)) throw new Error('Invalid asset path.');
-      const types = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+      const types = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
       response.writeHead(200, { 'content-type': types[path.extname(target)] || 'application/octet-stream', 'cache-control': 'no-cache' });
       response.end(await readFile(target));
       return;

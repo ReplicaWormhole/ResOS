@@ -5,8 +5,8 @@
  * live in the small modules below. See ../README.md for the flow.
  */
 import { createApiClient, sessionRead, sessionWrite } from './browser-session.js';
-import { escapeHtml, safeMarkdown } from './markdown.js';
-import { passageText, markLinkedPassages } from './passages.js';
+import { escapeHtml, safeMarkdown, safePlainMath } from './markdown.js';
+import { passageText, selectedPassage, markLinkedPassages } from './passages.js';
 import { createBranchPopup } from './branch-popup.js';
 import { renderMessage, linkedChats } from './message-view.js';
 import { applyConversationEvent } from './conversation-events.js';
@@ -404,7 +404,7 @@ function renderQuote(chat) {
   if (!hasSource) {
     return;
   }
-  elements.quoteText.textContent = chat.selectedQuote || 'Question about the whole file.';
+  elements.quoteText.innerHTML = safePlainMath(chat.selectedQuote || 'Question about the whole file.');
   query('#quoteLabel').textContent = chat.sourceFile ? 'SOURCE FILE' : 'BRANCHED FROM SELECTION';
   elements.quoteParent.textContent = chat.sourceFile ? 'Open file ↗' : 'Open parent ↗';
   const parent = appState.conversations.find(item => item.id === chat.parentId);
@@ -926,15 +926,9 @@ function showSelectionAction() {
     hideSelectionActions();
     return;
   }
-  const prefix = document.createRange();
-  prefix.selectNodeContents(body);
-  prefix.setEnd(range.startContainer, range.startOffset);
-  const raw = passageText(range.cloneContents());
-  const quote = raw.trim().slice(0, 12000);
-  if (!quote) {
-    hideSelectionActions();
-    return;
-  }
+  const passage = selectedPassage(body, range);
+  const quote = passage.quote.slice(0, 12000);
+  if (!quote) { hideSelectionActions(); return; }
   selectedSpan = {
     quote,
     chatId: message.dataset.chatId,
@@ -942,7 +936,7 @@ function showSelectionAction() {
     fromPopup: branchPopup.isOpen,
     turnId: message.dataset.turnId,
     messageId: message.dataset.messageId,
-    start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length
+    start: passage.start
   };
   selectionAction.hidden = false;
   selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';

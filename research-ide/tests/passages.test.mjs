@@ -29,13 +29,16 @@ class DOMNode {
   setAttribute(key, value) {
     this.attrs[key] = value;
   }
+  getAttribute(key) { return this.attrs[key] ?? null; }
+  contains(node) { return this === node || this.children.some(child => child.contains(node)); }
   addEventListener(type, handler) {
     this.handlers[type] = handler;
   }
   replaceWith(fragment) {
     const i = this.parent.children.indexOf(this);
-    this.parent.children.splice(i, 1, ...fragment.children);
-    for (const child of fragment.children) {
+    const replacements = fragment.nodeName === '#fragment' ? fragment.children : [fragment];
+    this.parent.children.splice(i, 1, ...replacements);
+    for (const child of replacements) {
       child.parent = this.parent;
     }
   }
@@ -190,4 +193,16 @@ test('passage click and keyboard activation pass linked chat IDs to the UI callb
 
 test('an edited source retains a fallback link instead of marking a different revision', () => {
   assert.equal(range('same', { ...branch('a', 'same', 0), parentRevisionId: 'old' }), null);
+});
+
+test('rendered formula is one TeX source unit and remains intact under a follow-up marker', () => {
+  const formula = element('span', element('span', 'visual glyph'), element('span', 'duplicate accessibility glyph'));
+  const source = String.raw`\(x^2\)`;
+  formula.setAttribute('data-math-source', source);
+  const body = element('div', 'Before ', formula, ' after');
+  assert.equal(passageText(body), 'Before ' + source + ' after');
+  markLinkedPassages(body, { id: 'answer' }, [branch('math', source, 7)]);
+  assert.equal(marks(body).length, 1);
+  assert.equal(marks(body)[0].children[0], formula);
+  assert.equal(passageText(body), 'Before ' + source + ' after');
 });

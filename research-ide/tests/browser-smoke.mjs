@@ -184,13 +184,13 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     const asset = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/public\//, '');
-    if (!/^[a-z-]+\.(html|js|css)$/.test(asset)) {
+    if (!/^[a-z-]+\.(html|js|css)$/.test(asset) && !/^vendor\/katex\/(?:fonts\/)?[a-zA-Z0-9_.-]+$/.test(asset)) {
       response.writeHead(404);
       response.end();
       return;
     }
     response.writeHead(200, {
-      'content-type': asset.endsWith('.js') ? 'text/javascript' : asset.endsWith('.css') ? 'text/css' : 'text/html'
+      'content-type': (asset.endsWith('.js') || asset.endsWith('.mjs')) ? 'text/javascript' : asset.endsWith('.css') ? 'text/css' : 'text/html'
     });
     response.end(await readFile(root + asset));
   } catch (error) {

@@ -1,3 +1,4 @@
+import { safePlainMath } from './markdown.js';
 import { renderMessage, linkedChats } from './message-view.js';
 import { sessionRead, sessionWrite } from './browser-session.js';
 
@@ -94,7 +95,7 @@ export function createBranchPopup({ getConversations, onSelect, onOpen, onSend, 
         }
       }
     }
-    query('#branchPopupQuote').textContent = chat.selectedQuote;
+    query('#branchPopupQuote').innerHTML = safePlainMath(chat.selectedQuote || '');
     const transcript = query('#branchPopupTranscript');
     const oldScrollTop = transcript.scrollTop;
     const bottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
