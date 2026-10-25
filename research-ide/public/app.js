@@ -84,8 +84,21 @@ const openDirectories = new Set(['.']);
 const api = createApiClient(accessKey);
 const branchPopup = createBranchPopup({
   getConversations: () => appState.conversations,
-  onSelect: selectChat,
+  onSelect: id => {
+    if (id === activeChatId) {
+      restoreDraft();
+    }
+    selectChat(id);
+  },
+  onClose: id => {
+    if (id === activeChatId) restoreDraft();
+  },
+  onSend: (id, text) => sendMessage(text, id),
+  onStop: id => stopResponse(id),
+  getApproval: () => pendingApprovals.length ? elements.approvalDescription.textContent : '',
+  onApproval: resolveApproval,
   onOpen: () => {
+    saveDraft();
     elements.selectionAction.hidden = true;
   }
 });
@@ -689,18 +702,20 @@ async function branchFromSelection() {
   }
 }
 
-async function sendMessage(text = elements.composer.value) {
-  const chat = currentChat();
-  if (!chat || chat.busy || creatingChat || !text.trim()) {
-    return;
+async function sendMessage(text = elements.composer.value, chatId = activeChatId) {
+  const chat = appState.conversations.find(item => item.id === chatId);
+  if (!chat || chat.busy || pendingSends.has(chatId) || creatingChat || !text.trim()) {
+    return false;
   }
   const question = text.trim();
   if (chat.title === 'New chat') {
     chat.title = question.replace(/\s+/g, ' ').slice(0, 48) || 'Research chat';
   }
-  elements.composer.value = '';
+  if (activeChatId === chat.id) {
+    elements.composer.value = '';
+    resizeComposer();
+  }
   sessionWrite('draft:' + chat.id, '');
-  resizeComposer();
   chat.messages.push({
     id: localId(),
     role: 'user',
@@ -724,6 +739,7 @@ async function sendMessage(text = elements.composer.value) {
         text: question
       })
     });
+    return true;
   } catch (error) {
     chat.busy = false;
     const last = chat.messages.at(-1);
@@ -732,20 +748,21 @@ async function sendMessage(text = elements.composer.value) {
       last.text = error.message;
     }
     showToast(error.message);
-    if (activeChatId === chat.id && !elements.composer.value) {
+    if (activeChatId === chat.id && !elements.composer.value && !sessionRead('draft:' + chat.id)) {
       elements.composer.value = question;
       saveDraft();
       resizeComposer();
     }
     renderChat();
+    return false;
   } finally {
     pendingSends.delete(chat.id);
     refreshState().catch(() => {});
   }
 }
 
-async function stopResponse() {
-  const chat = currentChat();
+async function stopResponse(chatId = activeChatId) {
+  const chat = appState.conversations.find(item => item.id === chatId);
   if (!chat?.busy) {
     return;
   }
@@ -756,8 +773,10 @@ async function stopResponse() {
         chatId: chat.id
       })
     });
+    return true;
   } catch (error) {
     showToast(error.message);
+    return false;
   }
 }
 
@@ -796,11 +815,13 @@ function renderApproval() {
   const current = pendingApprovals[0];
   elements.approvalBar.hidden = !current;
   if (!current) {
+    branchPopup.render();
     return;
   }
   const requested = current.params?.permissions ? 'Requested permissions: ' + JSON.stringify(current.params.permissions) : '';
   const command = current.params?.command?.join?.(' ') || current.params?.reason || current.params?.grantRoot || requested || current.method;
   elements.approvalDescription.textContent = String(command || 'The agent requested permission to use a tool.').slice(0, 180);
+  branchPopup.render();
 }
 
 async function resolveApproval(decision) {
@@ -817,8 +838,10 @@ async function resolveApproval(decision) {
     });
     pendingApprovals.shift();
     renderApproval();
+    return true;
   } catch (error) {
     showToast(error.message);
+    return false;
   }
 }
 
@@ -964,7 +987,7 @@ function bindChatEvents() {
     saveDraft();
     resizeComposer();
   });
-  query('#stopButton').addEventListener('click', stopResponse);
+  query('#stopButton').addEventListener('click', () => stopResponse());
 }
 
 function bindLayoutEvents() {

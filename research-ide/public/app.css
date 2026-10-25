@@ -182,3 +182,18 @@ body.sidebar-collapsed.editor-open .ide-grid { grid-template-columns: minmax(300
 .panel-tabs { flex-wrap: wrap; min-height: 54px; flex-basis: auto; padding-top: 8px; padding-bottom: 8px; }
 .panel-tabs .editor-tab { flex: 1; }
 .panel-tabs .button { margin-left: 0; }
+
+.branch-popup-transcript { flex: 1 1 auto; min-height: 50px; }
+.branch-popup-header, .branch-popup footer { flex-shrink: 0; }
+.popup-composer textarea { display: block; width: 100%; min-height: 60px; max-height: 140px; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 12px; color: var(--ink); background: var(--surface-soft); font-size: 16px; line-height: 1.5; }
+.popup-composer-actions { display: flex; align-items: center; gap: 10px; padding-top: 8px; }
+.popup-composer-actions .turn-state { margin-left: auto; font-size: 11px; }
+.popup-error { padding-top: 8px; color: #a25740; font-size: 12px; }
+.branch-popup .approval-bar { max-height: 120px; overflow: auto; flex-shrink: 0; }
+
+@media (max-height: 500px) {
+  .branch-popup-header, .branch-popup footer { padding: 8px 12px; }
+  .branch-popup-quote { max-height: 36px; margin-top: 6px; }
+  .branch-popup-transcript { min-height: 25px; padding-top: 12px; }
+  .branch-popup .approval-bar { max-height: 80px; }
+}

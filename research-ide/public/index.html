@@ -106,7 +106,14 @@
     <div id="branchPopupChoices" class="branch-popup-choices"></div>
     <blockquote id="branchPopupQuote" class="branch-popup-quote"></blockquote>
     <div id="branchPopupTranscript" class="branch-popup-transcript" role="region" aria-label="Linked conversation"></div>
-    <footer><button id="openBranchChat" class="button button-primary">Open chat to continue ↗</button></footer>
+    <div id="popupApprovalBar" class="approval-bar" hidden><div><strong>Agent needs permission</strong><span id="popupApprovalDescription"></span></div><div class="approval-actions"><button id="popupDeclineApproval" class="button button-small">Decline</button><button id="popupAllowApproval" class="button button-small">Allow once</button></div></div>
+    <footer>
+      <form id="popupComposerForm" class="popup-composer">
+        <textarea id="popupComposer" rows="2" placeholder="Continue this conversation…" aria-label="Message in linked chat"></textarea>
+        <div class="popup-composer-actions"><button id="openBranchChat" class="text-button" type="button">Expand chat ↗</button><span id="popupTurnState" class="turn-state" role="status"></span><button id="popupStop" class="button" type="button" hidden>Stop</button><button id="popupSend" class="button button-primary" type="submit">Send ↑</button></div>
+      </form>
+      <div id="popupError" class="popup-error" role="alert" hidden></div>
+    </footer>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/public/app.js"></script>

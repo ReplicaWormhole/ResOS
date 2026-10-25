@@ -147,3 +147,39 @@ sidebar still contained only main chats. No chats were created or removed.
 Adversarial review found no blocking issues. Physical iPad Safari was not tested;
 this change uses the existing responsive list and popup controls. Screenshot
 `/tmp/fieldwork-main-conversations.png` is a temporary preview artifact.
+
+
+## Continue inside popups, 25 October 2026
+
+Popups now contain a composer, Send/Stop controls, working status, visible send
+errors, and the shared permission controls. Expand chat changes the viewing area;
+it is no longer required to reply. Popup and full-view drafts share the existing
+per-chat session-storage key, while parent drafts remain separate.
+
+Live verification used the existing whole-file `VERIFY.txt` test chat. Sent two
+consecutive messages entirely in the popup and received `POPUP_OK` and
+`SECOND_POPUP_OK`. Verified that the main chat draft survived a popup send, a
+popup draft moved into the expanded composer, survived reload, returned to the
+popup, and synchronized back after closing. No test chats were created or files
+edited. Two successful verification turns remain in ignored saved state.
+
+The older “About: Hello.” test chat returned an agent runtime error that its
+thread already has an active writer. Its failed question and restored draft
+remain saved. No other agent process was interrupted to remove that lock. This
+is a remaining runtime limitation for that old thread; the fresh-thread popup
+check completed both turns successfully.
+
+`node --test research-ide/tests/*.test.mjs` passes all 24 tests. The new popup
+DOM/event test covers target chat IDs, separate drafts for overlapping chats,
+failed-send restoration, busy-chat send protection, Stop/permission callbacks,
+expansion, and reopening drafts edited in the full view. Syntax checks pass for
+`public/app.js` and `public/branch-popup.js`; `git diff --check` passes. Permission
+and Stop actions were tested via callbacks; their controls appeared during the
+live response, but no live permission request was induced.
+
+Adversarial review fixed draft loss when returning from a popup to the same
+chat, restoration after shared-sender errors, and forwarding DOM click events
+as chat IDs to the Stop handler. No blocking issue remains in the changed UI.
+Physical iPad Safari keyboard behavior is not verified. No dependencies added.
+Screenshot `/tmp/fieldwork-popup-replies.png` is temporary; the test drafts live
+only in the temporary browser tab's session storage.

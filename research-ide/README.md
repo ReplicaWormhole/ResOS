@@ -16,8 +16,9 @@ agent responds, stop a response, and branch using selected text or **Ask about
 this** below an answer. Drafts stay separate per chat within the browser tab.
 
 Passages with linked follow-up chats are highlighted in the original answer.
-Click or tap a highlight to read the follow-up in a popup, then choose **Open chat
-to continue** to reply. Close the popup with ×, Escape, or a tap outside it to
+Click or tap a highlight to read and continue the follow-up in a popup. Its
+composer supports Send, Stop, streamed replies, and permission requests. Choose
+**Expand chat** when you want more room; the draft follows you between views. Close the popup with ×, Escape, or a tap outside it to
 keep reading the original. Overlapping follow-ups offer a chat selector. Existing
 saved quotes receive highlights too; older quotes without an exact match appear
 as a follow-up button under the answer. New selections record their position so
@@ -81,7 +82,7 @@ or frontend framework is required. The server serves the imported modules too.
 | `public/browser-session.js` | Safe session storage and authenticated JSON requests to the server. |
 | `public/markdown.js` | Escapes HTML, then renders the supported subset of Markdown. |
 | `public/passages.js` | Maps text selections to offsets and highlights passages with linked chats. Receives a callback to open those chats. |
-| `public/branch-popup.js` | Owns the linked-chat dialog, chat choices, and popup reading position. |
+| `public/branch-popup.js` | Owns the linked-chat dialog, composer/drafts, chat choices, and reading position. |
 | `public/conversation-events.js` | Applies streamed message events to conversation data, without touching the DOM or making requests. |
 | `server.mjs` | Workspace file access, saved conversations, Codex app-server integration, and the browser event stream. |
 
@@ -106,7 +107,8 @@ The main flows are:
    text and its position. `branchFromSelection()` forks a chat from an assistant
    turn; `askAboutFile()` creates a chat tied to a file or file selection.
    `markLinkedPassages()` marks matching text. Activating a mark opens the popup;
-   its **Open chat to continue** button selects that conversation.
+   its composer sends to that linked conversation, while **Expand chat** selects
+   the conversation in the main panel.
 
 The server owns saved conversation and file data. The browser owns transient
 state such as open panels, selections and scroll positions. Drafts and the
