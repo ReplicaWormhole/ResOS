@@ -73,6 +73,15 @@ test('popup sends to its own chat, keeps per-chat drafts and handles errors, sto
     popup.open(['a']);
     assert.equal(composer.value, 'draft from expanded view');
     assert.equal(drafts.get('draft:b'), 'second draft');
+    input('parent popup draft');
+    popup.open(['b'], { push: true });
+    assert.equal(query('#popupBack').hidden, false);
+    assert.equal(composer.value, 'second draft');
+    input('nested popup draft');
+    query('#popupBack').handlers.click();
+    assert.equal(popup.chatId, 'a');
+    assert.equal(composer.value, 'parent popup draft');
+    assert.equal(drafts.get('draft:b'), 'nested popup draft');
   } finally {
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);

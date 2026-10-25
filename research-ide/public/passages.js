@@ -13,6 +13,7 @@ export function passageText(root) {
 }
 
 export function passageRange(text, chat, message) {
+  if (chat.parentRevisionId && chat.parentRevisionId !== message.revisionId) return null;
   const quote = chat.selectedQuote || '';
   if (!quote) {
     return null;

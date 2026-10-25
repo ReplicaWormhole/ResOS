@@ -102,7 +102,8 @@
   <button id="sidebarScrim" class="sidebar-scrim" aria-label="Close navigation" hidden></button>
   <button id="selectionAction" class="selection-action" hidden>Ask about selection <span>↗</span></button>
   <dialog id="branchPopup" class="branch-popup" aria-labelledby="branchPopupTitle">
-    <header class="branch-popup-header"><h2 id="branchPopupTitle">Linked chat</h2><button id="closeBranchPopup" class="icon-button" aria-label="Close linked chat">×</button></header>
+    <header class="branch-popup-header"><button id="popupBack" class="text-button" hidden>← Back</button><h2 id="branchPopupTitle">Linked chat</h2><button id="closeBranchPopup" class="icon-button" aria-label="Close linked chat">×</button></header>
+    <button id="popupSelectionAction" class="selection-action" hidden>Ask about selection ↗</button>
     <div id="branchPopupChoices" class="branch-popup-choices"></div>
     <blockquote id="branchPopupQuote" class="branch-popup-quote"></blockquote>
     <div id="branchPopupTranscript" class="branch-popup-transcript" role="region" aria-label="Linked conversation"></div>
@@ -114,6 +115,11 @@
       </form>
       <div id="popupError" class="popup-error" role="alert" hidden></div>
     </footer>
+  </dialog>
+  <dialog id="nodeEditor" class="node-editor" aria-labelledby="nodeEditorTitle">
+    <header class="branch-popup-header"><h2 id="nodeEditorTitle">Edit message</h2><button id="closeNodeEditor" class="icon-button" aria-label="Close message editor">×</button></header>
+    <form id="nodeEditorForm"><textarea id="nodeEditorText" rows="10" aria-label="Message or note text"></textarea><div id="nodeEditorHistory"></div><p id="nodeEditorError" role="alert"></p><button id="nodeEditorSave" class="button button-primary" type="submit">Save</button></form>
+    <p class="node-editor-hint">Revisions and authorship are kept. Existing follow-ups retain the version they referred to; editing does not regenerate replies.</p>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/public/app.js"></script>

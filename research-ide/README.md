@@ -1,9 +1,10 @@
 # Fieldwork Research IDE
 
-A small local research IDE prototype: browse and edit a project, chat with the
-installed Codex agent, and open a linked chat from selected answer text. Each
-branch is a real Codex app-server thread forked through the selected answer's
-turn. The left navigation switches between files and main conversations. Follow-up
+A local research notebook: browse files, converse with Codex, revise messages,
+add notes, and open discussions from saved passages. The conversation is
+persistent state; each response job uses a fresh runtime thread and recorded
+context. Chats never resume old agent sessions. The left navigation switches
+between files and main conversations. Follow-up
 chats stay attached to their source passages and files, and do not appear in the
 conversation list. While reading a follow-up, its main conversation stays selected
 in the sidebar. File discussions are opened from the file’s highlights or question
@@ -50,7 +51,7 @@ set `CODEX_BIN` if the CLI is not named `codex` on `PATH`. Stop with Ctrl+C.
 By default the server binds only to loopback. The selected directory is the Codex working
 directory and workspace-write sandbox root. When needed, the agent can search
 saved chats with the read-only helper at `scripts/read_context.mjs`; it starts
-with the current thread and retrieves other history on demand. Codex tool requests outside its
+with the saved node path and retrieves other history on demand. Codex tool requests outside its
 sandbox can ask for approval in the chat pane.
 
 Local Wi-Fi access can be enabled explicitly with `--host <this-computer-LAN-IP>`.
@@ -72,6 +73,22 @@ syntax highlighting, image/file attachments, or an automatic context summary.
 
 ## How the browser code works
 
+Messages now have stable node IDs, parent edges, immutable text revisions and
+revision authorship. **Edit** creates a human revision, **Add note** keeps your
+thoughts separately, and **History** shows all versions. Editing never regenerates
+descendants automatically. Earlier discussions retain their source revision and
+remain accessible through an **earlier revision** link.
+
+Select a passage inside a popup to open another discussion. **Back** returns one
+level, preserving drafts and reading position. **Run context** shows the exact
+saved input and execution record. **Retry response** creates a fresh job for a
+failed/stopped response without duplicating its question.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for migration and recovery contracts.
+Version-1 state is backed up before migration. Jobs run serially within the
+notebook and interrupted jobs are never automatically replayed after restart.
+Other agent applications are not stopped.
+
 `public/index.html` defines the panels and controls, `public/app.css` styles them,
 and the browser loads `public/app.js` as a native JavaScript module. No bundler
 or frontend framework is required. The server serves the imported modules too.
@@ -84,6 +101,9 @@ or frontend framework is required. The server serves the imported modules too.
 | `public/passages.js` | Maps text selections to offsets and highlights passages with linked chats. Receives a callback to open those chats. |
 | `public/branch-popup.js` | Owns the linked-chat dialog, composer/drafts, chat choices, and reading position. |
 | `public/conversation-events.js` | Applies streamed message events to conversation data, without touching the DOM or making requests. |
+| `public/message-view.js` | Shared message actions, notes and source markers in both views. |
+| `notebook-state.mjs` | Migration, revision history, message ancestry and pinned context. |
+| `job-runner.mjs` | Fresh response jobs, serialization, stop, retry and crash recovery. |
 | `server.mjs` | Workspace file access, saved conversations, Codex app-server integration, and the browser event stream. |
 
 The main flows are:
@@ -104,8 +124,8 @@ The main flows are:
    uses the textarea. `saveFile()` sends its contents to `/api/file`, retaining
    the original newline convention.
 4. **Questions about passages:** `showSelectionAction()` records the selected
-   text and its position. `branchFromSelection()` forks a chat from an assistant
-   turn; `askAboutFile()` creates a chat tied to a file or file selection.
+   text and its position. `branchFromSelection()` pins a saved source node and
+   revision; `askAboutFile()` creates a chat tied to a file or file selection.
    `markLinkedPassages()` marks matching text. Activating a mark opens the popup;
    its composer sends to that linked conversation, while **Expand chat** selects
    the conversation in the main panel.
@@ -123,7 +143,8 @@ node --test research-ide/tests/*.test.mjs
 node --check research-ide/public/app.js
 ```
 
-The tests import the rendering and event modules directly. They cover passage
+The tests include model/rendering checks and an isolated HTTP server with a mock
+runtime, without model calls or writes to your notebook. They cover passage
 matching, overlap and activation, file context, API errors and authentication,
 storage failure, HTML escaping, and streamed message reconciliation. The
 passage tests use a small DOM harness; browser checks are recorded separately

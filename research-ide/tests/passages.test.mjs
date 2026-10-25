@@ -186,3 +186,8 @@ test('passage click and keyboard activation pass linked chat IDs to the UI callb
     window.getSelection = () => null;
   }
 });
+
+
+test('an edited source retains a fallback link instead of marking a different revision', () => {
+  assert.equal(range('same', { ...branch('a', 'same', 0), parentRevisionId: 'old' }), null);
+});

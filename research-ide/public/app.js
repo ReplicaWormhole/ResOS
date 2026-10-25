@@ -8,6 +8,7 @@ import { createApiClient, sessionRead, sessionWrite } from './browser-session.js
 import { escapeHtml, safeMarkdown } from './markdown.js';
 import { passageText, markLinkedPassages } from './passages.js';
 import { createBranchPopup } from './branch-popup.js';
+import { renderMessage, linkedChats } from './message-view.js';
 import { applyConversationEvent } from './conversation-events.js';
 import { mainConversations, mainConversationId } from './conversation-navigation.js';
 
@@ -20,8 +21,9 @@ if (accessUrl.searchParams.has('key') && sessionWrite('research-ide-access-key',
   history.replaceState(null, '', accessUrl.pathname);
 }
 let localSequence = 0;
+const browserNonce = Math.random().toString(36).slice(2);
 // These IDs only reconcile optimistic browser messages. They are not credentials.
-const localId = () => `local-${Date.now().toString(36)}-${++localSequence}`;
+const localId = () => `local-${browserNonce}-${Date.now().toString(36)}-${++localSequence}`;
 const elements = {
   workspace: query('#workspaceName'),
   agentBadge: query('#agentBadge'),
@@ -97,9 +99,12 @@ const branchPopup = createBranchPopup({
   onStop: id => stopResponse(id),
   getApproval: () => pendingApprovals.length ? elements.approvalDescription.textContent : '',
   onApproval: resolveApproval,
+  onAsk: askFromMessage,
+  onEdit: openNodeEditor,
+  onRetry: retryResponse,
   onOpen: () => {
     saveDraft();
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
   }
 });
 
@@ -343,7 +348,7 @@ async function openFile(relative, reveal = true) {
       return;
     }
     selectedSpan = null;
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
     openedFile = file.path;
     fileEditing = false;
     fileNewline = file.content.includes('\r\n') ? '\r\n' : '\n';
@@ -459,68 +464,13 @@ function renderChat(forceScroll = false) {
     retained.add(message.id);
     wrapper.className = 'chat-message ' + message.role + (message.status === 'error' ? ' error' : '');
     wrapper.dataset.messageId = message.id;
-    const children = appState.conversations.filter(child => (
-      child.parentId === chat?.id &&
-      child.parentTurnId === message.turnId &&
-      (!child.parentMessageId || child.parentMessageId === message.id)
-    ));
-    const signature = JSON.stringify([
-      message.text, message.status, message.turnId,
-      children.map(child => [child.id, child.selectedQuote, child.selectedStart])
-    ]);
-    if (!isNew && wrapper.dataset.signature === signature) {
-      continue;
-    }
+    const children = linkedChats(appState.conversations, chat, message);
+    const signature = JSON.stringify([message, children.map(child => [child.id, child.parentRevisionId, child.selectedQuote, child.selectedStart])]);
+    if (!isNew && wrapper.dataset.signature === signature) continue;
     wrapper.dataset.signature = signature;
     wrapper.replaceChildren();
-    if (message.role === 'assistant') {
-      if (message.turnId) {
-        wrapper.dataset.turnId = message.turnId;
-      }
-      const body = document.createElement('div');
-      body.className = 'message-body';
-      body.innerHTML = safeMarkdown(message.text || (message.status === 'streaming' ? '…' : ''));
-      const unmatched = markLinkedPassages(body, message, children, branchPopup.open);
-      wrapper.append(body);
-      for (const child of unmatched) {
-        const link = document.createElement('button');
-        link.className = 'text-button';
-        link.textContent = '↳ Follow-up: ' + child.selectedQuote.slice(0, 80);
-        link.onclick = () => branchPopup.open([child.id]);
-        wrapper.append(link);
-      }
-      if (message.status === 'streaming') {
-        const meta = document.createElement('div');
-        meta.className = 'message-meta';
-        meta.textContent = 'Thinking';
-        wrapper.append(meta);
-      } else if (message.turnId && message.text && message.status !== 'error') {
-        const actions = document.createElement('div');
-        actions.className = 'message-actions';
-        const branch = document.createElement('button');
-        branch.type = 'button';
-        branch.textContent = 'Ask about this ↗';
-        branch.addEventListener('click', () => {
-          if (selectedSpan?.messageId !== message.id) {
-            const text = passageText(body);
-            selectedSpan = {
-              turnId: message.turnId,
-              messageId: message.id,
-              start: text.length - text.trimStart().length,
-              quote: text.trim().slice(0, 12000)
-            };
-          }
-          branchFromSelection();
-        });
-        actions.append(branch);
-        wrapper.append(actions);
-      }
-    } else {
-      const bubble = document.createElement('div');
-      bubble.className = 'message-bubble';
-      bubble.textContent = message.text;
-      wrapper.append(bubble);
-    }
+    renderMessage(wrapper, { chat, message, conversations: appState.conversations,
+      onOpen: branchPopup.open, onAsk: askFromMessage, onEdit: openNodeEditor, onRetry: retryResponse });
     if (isNew) {
       elements.transcript.insertBefore(wrapper, elements.emptyChat);
     }
@@ -555,7 +505,7 @@ async function selectChat(id) {
   chat.lastUsedAt = new Date().toISOString();
   sessionWrite('activeChatId', id);
   selectedSpan = null;
-  elements.selectionAction.hidden = true;
+  hideSelectionActions();
   restoreDraft();
   setEditorOpen(false);
   closeNavigation();
@@ -630,7 +580,7 @@ async function askAboutFile() {
   const path = openedFile;
   creatingChat = true;
   selectedSpan = null;
-  elements.selectionAction.hidden = true;
+  hideSelectionActions();
   renderChat();
   showEditor();
   try {
@@ -667,10 +617,10 @@ async function branchFromSelection() {
     return;
   }
   saveDraft();
-  const parentId = activeChatId;
   const span = selectedSpan;
+  const parentId = span.chatId || activeChatId;
   selectedSpan = null;
-  elements.selectionAction.hidden = true;
+  hideSelectionActions();
   creatingChat = true;
   renderChat();
   elements.turnState.textContent = 'Opening linked chat…';
@@ -682,23 +632,21 @@ async function branchFromSelection() {
         turnId: span.turnId,
         selectedQuote: span.quote,
         parentMessageId: span.messageId,
+        parentRevisionId: span.revisionId,
         selectedStart: span.start
       })
     });
     appState.conversations.push(result.chat);
-    activeChatId = result.chat.id;
-    sessionWrite('activeChatId', activeChatId);
-    restoreDraft();
-    setEditorOpen(false);
-    closeNavigation();
-    activateNav('chats');
-    showToast('New linked chat. Ask your question below.');
+    renderChat();
+    branchPopup.open([result.chat.id], { push: Boolean(span.fromPopup) });
+    query('#popupComposer').focus();
+    showToast('Linked discussion opened. Ask your question below.');
   } catch (error) {
     showToast(error.message);
   } finally {
     creatingChat = false;
     renderChat();
-    elements.composer.focus();
+    if (!branchPopup.isOpen) elements.composer.focus();
   }
 }
 
@@ -736,7 +684,8 @@ async function sendMessage(text = elements.composer.value, chatId = activeChatId
       method: 'POST',
       body: JSON.stringify({
         chatId: chat.id,
-        text: question
+        text: question,
+        requestId: localId()
       })
     });
     return true;
@@ -783,6 +732,7 @@ async function stopResponse(chatId = activeChatId) {
 // Live server updates and permission requests
 
 function handleEvent(event) {
+  if (event.type === 'approvals-cleared') { pendingApprovals.length = 0; renderApproval(); }
   if (event.type === 'agent-status') {
     setAgentReady(event.ready, event.message || (event.ready ? 'Codex connected' : 'Agent offline'));
   }
@@ -790,7 +740,7 @@ function handleEvent(event) {
   if (updatedChat?.id === activeChatId) {
     renderChat();
   }
-  if (event.type === 'turn-completed') {
+  if (event.type === 'notebook-changed' || event.type === 'turn-completed') {
     refreshState().catch(() => {});
   }
   if (event.type === 'workspace-changed') {
@@ -862,18 +812,79 @@ async function refreshState() {
   renderChat();
 }
 
+function hideSelectionActions() {
+  elements.selectionAction.hidden = true;
+  query('#popupSelectionAction').hidden = true;
+}
+function askFromMessage(chat, message, body) {
+  if (selectedSpan?.messageId !== message.id || selectedSpan?.chatId !== chat.id) {
+    const text = passageText(body);
+    selectedSpan = { chatId: chat.id, messageId: message.id, revisionId: message.revisionId,
+      turnId: message.turnId, quote: text.trim().slice(0, 12000), start: text.length - text.trimStart().length,
+      fromPopup: branchPopup.isOpen };
+  }
+  return branchFromSelection();
+}
+async function retryResponse(chat, message) {
+  try {
+    await api('/api/job/retry', { method: 'POST', body: JSON.stringify({ chatId: chat.id, jobId: message.jobId, requestId: localId() }) });
+    await refreshState();
+  } catch (error) { showToast(error.message); }
+}
+let nodeEditor = null;
+async function openNodeEditor(chat, message, mode) {
+  try {
+    if (mode === 'job') {
+      const { job } = await api('/api/job?id=' + encodeURIComponent(message.jobId));
+      query('#nodeEditorTitle').textContent = 'Response context';
+      query('#nodeEditorText').hidden = true; query('#nodeEditorSave').hidden = true;
+      const history = query('#nodeEditorHistory'); history.hidden = false; history.replaceChildren();
+      const text = document.createElement('pre'); text.textContent = JSON.stringify(job, null, 2); history.append(text);
+      query('#nodeEditorError').textContent = ''; query('#nodeEditor').showModal(); return;
+    }
+    const { message: latest } = await api('/api/node?chatId=' + encodeURIComponent(chat.id) + '&messageId=' + encodeURIComponent(message.id));
+    nodeEditor = { chatId: chat.id, messageId: latest.id, baseRevisionId: latest.revisionId, mode };
+    query('#nodeEditorTitle').textContent = mode === 'history' ? 'Message history' : mode === 'annotate' ? 'Add your note' : 'Edit message';
+    query('#nodeEditorText').hidden = mode === 'history';
+    query('#nodeEditorText').value = mode === 'annotate' ? '' : latest.text;
+    query('#nodeEditorSave').hidden = mode === 'history';
+    const history = query('#nodeEditorHistory'); history.replaceChildren();
+    history.hidden = mode !== 'history';
+    for (const revision of mode === 'history' ? latest.revisions || [] : []) {
+      const entry = document.createElement('section');
+      const label = document.createElement('strong'); label.textContent = (revision.author === 'user' ? 'You' : 'Agent') + ' · ' + revision.createdAt;
+      const text = document.createElement('pre'); text.textContent = revision.text;
+      entry.append(label, text); history.append(entry);
+    }
+    query('#nodeEditorError').textContent = '';
+    hideSelectionActions();
+    query('#nodeEditor').showModal();
+  } catch (error) { showToast(error.message); }
+}
+async function saveNodeEditor(event) {
+  event.preventDefault();
+  if (!nodeEditor) return;
+  const button = query('#nodeEditorSave'); button.disabled = true;
+  try {
+    await api(nodeEditor.mode === 'annotate' ? '/api/node/annotate' : '/api/node/revise', {
+      method: 'POST', body: JSON.stringify({ ...nodeEditor, text: query('#nodeEditorText').value }) });
+    query('#nodeEditor').close();
+    await refreshState();
+  } catch (error) { query('#nodeEditorError').textContent = error.message; }
+  finally { button.disabled = false; }
+}
+query('#nodeEditorForm').addEventListener('submit', saveNodeEditor);
+query('#closeNodeEditor').addEventListener('click', () => query('#nodeEditor').close());
+
 // Selection coordinates and contextual actions
 
 function showSelectionAction() {
-  if (branchPopup.isOpen) {
-    elements.selectionAction.hidden = true;
-    return;
-  }
+  const selectionAction = branchPopup.isOpen ? query('#popupSelectionAction') : elements.selectionAction;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.toString().trim()) {
     selectedSpan = null;
     query('#askFile').textContent = 'Ask about file ↗';
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
     return;
   }
   const range = selection.getRangeAt(0);
@@ -881,7 +892,7 @@ function showSelectionAction() {
   const preview = query('#filePreview');
   if (preview.contains(range.startContainer) && preview.contains(range.endContainer)) {
     if (fileDirty) {
-      elements.selectionAction.hidden = true;
+      hideSelectionActions();
       return;
     }
     const prefix = document.createRange();
@@ -896,23 +907,23 @@ function showSelectionAction() {
       quote: raw.trim()
     };
     const rect = range.getBoundingClientRect();
-    elements.selectionAction.hidden = false;
-    elements.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 200)) + 'px';
-    elements.selectionAction.style.top = Math.max(8, rect.top - 44) + 'px';
+    selectionAction.hidden = false;
+    selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 200)) + 'px';
+    selectionAction.style.top = Math.max(8, rect.top - 44) + 'px';
     query('#askFile').textContent = 'Ask about selection ↗';
     return;
   }
   const message = node.nodeType === Node.ELEMENT_NODE
-    ? node.closest?.('.chat-message.assistant')
-    : node.parentElement?.closest('.chat-message.assistant');
-  if (!message?.dataset.turnId || !message.closest('#transcript')) {
-    elements.selectionAction.hidden = true;
+    ? node.closest?.('.chat-message')
+    : node.parentElement?.closest('.chat-message');
+  if (!message?.dataset.messageId || !(message.closest('#transcript') || message.closest('#branchPopupTranscript')) || !message.dataset.revisionId) {
+    hideSelectionActions();
     return;
   }
   const rect = range.getBoundingClientRect();
-  const body = message.querySelector('.message-body');
+  const body = message.querySelector('.message-body, .message-bubble');
   if (!body?.contains(range.startContainer) || !body.contains(range.endContainer)) {
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
     return;
   }
   const prefix = document.createRange();
@@ -921,18 +932,21 @@ function showSelectionAction() {
   const raw = passageText(range.cloneContents());
   const quote = raw.trim().slice(0, 12000);
   if (!quote) {
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
     return;
   }
   selectedSpan = {
     quote,
+    chatId: message.dataset.chatId,
+    revisionId: message.dataset.revisionId,
+    fromPopup: branchPopup.isOpen,
     turnId: message.dataset.turnId,
     messageId: message.dataset.messageId,
     start: passageText(prefix.cloneContents()).length + raw.length - raw.trimStart().length
   };
-  elements.selectionAction.hidden = false;
-  elements.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';
-  elements.selectionAction.style.top = Math.max(8, rect.top - 39) + 'px';
+  selectionAction.hidden = false;
+  selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 170)) + 'px';
+  selectionAction.style.top = Math.max(8, rect.top - 39) + 'px';
 }
 
 // Event registration by feature
@@ -943,7 +957,7 @@ function bindFileEvents() {
   query('#toggleFileEdit').addEventListener('click', () => {
     fileEditing = !fileEditing;
     selectedSpan = null;
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
     showEditor();
   });
   for (const event of ['select', 'keyup', 'pointerup']) {
@@ -1032,11 +1046,13 @@ function bindSelectionAndApprovalEvents() {
   }
   elements.selectionAction.addEventListener('pointerdown', event => event.preventDefault());
   elements.selectionAction.addEventListener('click', branchFromSelection);
+  query('#popupSelectionAction').addEventListener('pointerdown', event => event.preventDefault());
+  query('#popupSelectionAction').addEventListener('click', branchFromSelection);
   query('#allowApproval').addEventListener('click', () => resolveApproval('allow'));
   query('#declineApproval').addEventListener('click', () => resolveApproval('deny'));
   document.addEventListener('selectionchange', showSelectionAction);
   document.addEventListener('scroll', () => {
-    elements.selectionAction.hidden = true;
+    hideSelectionActions();
   }, true);
 }
 

@@ -197,3 +197,16 @@ body.sidebar-collapsed.editor-open .ide-grid { grid-template-columns: minmax(300
   .branch-popup-transcript { min-height: 25px; padding-top: 12px; }
   .branch-popup .approval-bar { max-height: 80px; }
 }
+
+.chat-message.user { flex-direction: column; align-items: flex-end; }
+.node-annotation { padding: 10px 12px; margin-top: 10px; border-left: 3px solid #b6b581; background: #faf9ef; white-space: pre-wrap; }
+.node-annotation strong { display: block; margin-bottom: 5px; font-size: 12px; color: #7c794b; }
+.node-editor { width: min(760px, calc(100vw - 24px)); max-height: calc(var(--app-height, 100dvh) - 24px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; padding: 0; }
+.node-editor::backdrop { background: #20342b55; }
+.node-editor form, .node-editor-hint { padding: 14px 18px; }
+.node-editor textarea { width: 100%; resize: vertical; min-height: 120px; max-height: 50dvh; font-size: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.node-editor pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.6 var(--ui); }
+.node-editor-hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+#nodeEditorError { color: #a25740; }
+.branch-popup-header h2 { flex: 1; }
+.message-actions { flex-wrap: wrap; }

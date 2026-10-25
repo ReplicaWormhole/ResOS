@@ -1,5 +1,58 @@
 # Manual verification, 24 October 2026
 
+## Persistent notebook and recursive discussions, 25 October 2026
+
+The live store migrated all 20 existing conversations to version 2. An owner-only
+version-1 backup was written before migration; IDs, messages and source links
+were retained. Old runtime thread IDs are provenance only. After migration, the
+previously locked About: Hello. conversation answered RECOVERED_NOTEBOOK through
+a fresh response job. After a service restart it answered AFTER_RESTART_OK through
+another fresh job. Three live jobs used three distinct runtime threads.
+
+Live browser checks selected RECOVERED_NOTEBOOK inside the popup with a mouse
+drag, used the popup's Ask about selection button, and opened a nested discussion
+without expanding. The child correctly answered which exact response was asked
+for in its ancestor. Back returned to the source with its marker. Editing the
+source saved a human revision, History showed both the original and revised
+text, and the child remained accessible as an earlier-revision follow-up. A
+separate human note was saved and displayed. Reload and restart preserved these
+records. The final job packet included both the human revision's authorship and
+the annotation. No existing text was removed; old lock-error messages remain
+historical records. One verification branch, three jobs, a human revision and a
+note remain intentionally in ignored local state.
+
+All 34 tests pass with node --test research-ide/tests/*.test.mjs. New checks cover
+migration, immutable source context, stale-edit/source rejection, exact rendered
+offsets, fresh per-response threads, serialized jobs, request deduplication,
+explicit retry without duplicate questions, cancellation of a queued job,
+restart interruption without replay, and exclusion of superseded sibling nodes.
+The isolated HTTP test exercises state-owner exclusion, node APIs, human notes,
+runtime process crashes and replacement, persistence across restart, and exact
+revision/note retrieval through the context reader. It uses a mock executable
+and temporary state, without model calls or writes to the user's notebook.
+Popup tests additionally cover nested Back navigation and separate drafts.
+
+Syntax checks passed for server.mjs, notebook-state.mjs, job-runner.mjs, app.js,
+branch-popup.js, message-view.js, read_context.mjs and the updated optional browser
+smoke fixture. git diff --check passed. The optional Playwright smoke script was
+updated for the new popup-first flow but was not executed in this task; live UI
+verification used the browser tool instead.
+
+Adversarial review checked data preservation, runtime ownership, stale events,
+source revisions, context ancestry, modal selection, retry behavior and scope.
+It corrected a stylesheet write error, runtime cleanup after worker death, and
+context walking through parent edges instead of including superseded siblings.
+No unresolved blocking finding remains in the reviewed changes. Physical iPad
+Safari gestures/keyboard behavior are untested. This remains a single-user local
+store with no snapshot compaction; ordinary model/network/filesystem failures
+remain possible. Tool jobs are not transactions and are never replayed on
+restart. Legacy runtime inputs cannot be reconstructed exactly from saved text.
+
+No dependencies were added. Backup, writer lock and notebook records remain
+ignored under .local. Isolated API test directories and schema/screenshot files
+under /tmp are temporary inspection artifacts. Preview screenshots include
+/tmp/fieldwork-notebook-revisions.png and /tmp/fieldwork-notebook-nested.png.
+
 The live Wi-Fi URL was exercised in a browser, rather than only on localhost.
 This reproduced a send failure: `crypto.randomUUID()` is unavailable on the
 insecure LAN origin. The old handler cleared the input before throwing. Browser

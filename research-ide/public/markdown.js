@@ -25,3 +25,10 @@ export function safeMarkdown(value) {
   });
   return text.replace(/\n/g, '<br>').replace(/\u0000FENCE(\d+)\u0000/g, (_, index) => fences[Number(index)] || '');
 }
+
+// Plain-text coordinates of this renderer, shared with server-side source validation.
+export function markdownText(value) {
+  return safeMarkdown(value).replace(/<br>/g, '\n').replace(/<[^>]*>/g, '')
+    .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'").replaceAll('&amp;', '&');
+}

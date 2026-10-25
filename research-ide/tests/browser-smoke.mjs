@@ -50,6 +50,10 @@ const state = {
     }]
   })]
 };
+for (const chat of state.conversations) for (const message of chat.messages) {
+  message.revisionId = 'revision-' + message.id;
+  message.revisions = [{ id: message.revisionId, text: message.text, author: message.role, createdAt: date }];
+}
 const streams = new Set();
 const calls = [];
 let content = 'First line.\nSecond line.\n';
@@ -269,14 +273,14 @@ try {
   await page.waitForFunction(() => document.querySelector('#quoteText').textContent === 'Question about the whole file.');
   assert.equal(calls.filter(call => call.path === '/api/chat/file').at(-1).body.wholeFile, true);
   await selectChat('root');
-  await page.locator('#transcript .message-actions button').click();
-  await page.waitForFunction(() => document.querySelector('#chatTitle').textContent === 'New chat');
+  await page.locator('#transcript .message-actions button').first().click();
+  await page.waitForFunction(() => document.querySelector('#branchPopupTitle').textContent === 'New chat');
   assert.equal(calls.find(call => call.path === '/api/chat/branch').body.parentMessageId, 'answer');
-  await page.locator('#composer').fill('Test message');
-  await page.locator('#sendButton').click();
-  await expectVisible('#stopButton');
-  assert.equal(await page.locator('#composer').isEnabled(), true);
-  await page.locator('#composer').fill('Draft during streaming');
+  await page.locator('#popupComposer').fill('Test message');
+  await page.locator('#popupSend').click();
+  await expectVisible('#popupStop');
+  assert.equal(await page.locator('#popupComposer').isEnabled(), true);
+  await page.locator('#popupComposer').fill('Draft during streaming');
   const sending = state.conversations.at(-1);
   sending.messages.at(-1).text = 'Hello from stream';
   emit({
@@ -291,10 +295,10 @@ try {
     turnId: 'new-turn',
     delta: 'Hello from stream'
   });
-  await page.waitForFunction(() => document.querySelector('#transcript').textContent.includes('Hello from stream'));
-  await page.locator('#stopButton').click();
-  await expectVisible('#sendButton');
-  assert.equal(await page.locator('#composer').inputValue(), 'Draft during streaming');
+  await page.waitForFunction(() => document.querySelector('#branchPopupTranscript').textContent.includes('Hello from stream'));
+  await page.locator('#popupStop').click();
+  await expectVisible('#popupSend');
+  assert.equal(await page.locator('#popupComposer').inputValue(), 'Draft during streaming');
   emit({
     type: 'approval-needed',
     id: 'approval-1',
@@ -303,10 +307,11 @@ try {
       command: ['echo', 'test']
     }
   });
-  await expectVisible('#approvalBar');
-  await page.locator('#allowApproval').click();
-  await page.waitForFunction(() => document.querySelector('#approvalBar').hidden);
+  await expectVisible('#popupApprovalBar');
+  await page.locator('#popupAllowApproval').click();
+  await page.waitForFunction(() => document.querySelector('#popupApprovalBar').hidden);
   assert.equal(calls.find(call => call.path === '/api/approval/approval-1').body.decision, 'allow');
+  await page.locator('#openBranchChat').click();
   await page.setViewportSize({
     width: 390,
     height: 600

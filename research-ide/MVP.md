@@ -20,12 +20,12 @@ It is not the application architecture or source of truth.
    workspace as the agent's working directory. Refresh the file view when the
    agent changes workspace files.
 4. Select a passage in an assistant answer and create a separate chat by
-   forking the Codex thread through the answer's turn. Carry the selected text
+   pinning the saved source node and revision. Carry the selected text
    as a visible source quote and ask a follow-up there.
 5. Continue each chat independently, switch between chats, and navigate their
    parent/child links through source highlights and popups. Only main chats
    appear in the conversation list; file discussions remain with their files.
-6. Start the agent with the active thread; when needed, let it search saved chats
+6. Start each agent response with the saved node path; let it search saved chats
    and inspect the parent path through a small local context reader.
 7. Preserve the chats and source links across app restarts.
 
@@ -58,8 +58,8 @@ It is not the application architecture or source of truth.
   that workspace. Codex starts there with a workspace-write sandbox and requests
   approval for additional permissions. Hidden VCS/runtime directories are omitted
   from the browser's file tree.
-- App-owned metadata stores chat parent links and selected quotes. Codex owns
-  the actual agent conversation/tool history. Keep those layers linked by IDs.
+- The app owns message nodes, revisions, notes, source links and response jobs.
+  Codex runtime threads execute individual jobs and remain replaceable.
 - A small read-only context helper lets the normal agent search saved chats on
   demand; historical messages are data, not instructions.
 - No production dependencies; use the installed Node runtime and browser APIs.
@@ -77,9 +77,9 @@ visualization. Source links provide simple navigation, not an additional researc
 - Saving a file changes the file on disk within the chosen workspace.
 - A real Codex app-server thread can answer a prompt and its reply streams in the
   chat pane.
-- A branch created from a selected answer is a distinct Codex thread, contains
+- A branch created from a selected answer pins its source revision, contains
   the selected quote, and is linked to the parent through a passage highlight or follow-up button.
-- A follow-up in either chat continues only that thread; reopening the app
+- A follow-up in either chat uses its saved path; reopening the app
   restores the source links and messages.
 - The agent can retrieve a matching result from another saved chat by using the
   context helper, with its chat ID/title available for provenance.
