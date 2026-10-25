@@ -55,3 +55,8 @@ test('unmatched legacy raw Markdown remains available as a follow-up link', () =
   const body = element('div', element('strong', 'bold'));
   assert.equal(context.markLinkedPassages(body, { id: 'answer' }, [child])[0], child);
 });
+
+test('changed file does not mark an ambiguous repeated quote at the wrong location', () => {
+  assert.equal(range('same same', { ...branch('a', 'same', 3), sourceFile: { path: 'test.txt' } }), null);
+  assert.deepEqual(range('prefix same', { ...branch('a', 'same', 0), sourceFile: { path: 'test.txt' } }), [7, 11]);
+});

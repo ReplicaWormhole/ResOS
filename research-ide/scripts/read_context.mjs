@@ -38,6 +38,7 @@ if (!chatId || (!query && !includeAncestors)) {
         id: chat.id,
         title: chat.title,
         selectedQuote: chat.selectedQuote || '',
+        sourceFile: chat.sourceFile || null,
         messages: (chat.messages || []).slice(-6).map(message => ({ role: message.role, text: String(message.text || '').slice(0, 1500), turnId: message.turnId || null })),
       }));
     }
@@ -54,12 +55,12 @@ if (!chatId || (!query && !includeAncestors)) {
           parentTitles.unshift(parent.title);
           parent = byId.get(parent.parentId);
         }
-        const haystacks = [chat.title, chat.selectedQuote || '', ...(chat.messages || []).map(message => message.text || '')];
+        const haystacks = [chat.sourceFile?.path || '', chat.title, chat.selectedQuote || '', ...(chat.messages || []).map(message => message.text || '')];
         const score = terms.reduce((sum, term) => sum + (haystacks.some(value => String(value).toLocaleLowerCase().includes(term)) ? 1 : 0), 0);
         if (!score) continue;
         const excerpts = (chat.messages || []).filter(message => terms.some(term => String(message.text || '').toLocaleLowerCase().includes(term)))
           .slice(-3).map(message => ({ role: message.role, text: String(message.text || '').slice(0, 1500), turnId: message.turnId || null }));
-        candidates.push({ id: chat.id, title: chat.title, parentPath: parentTitles, selectedQuote: chat.selectedQuote || '', score, excerpts });
+        candidates.push({ id: chat.id, title: chat.title, parentPath: parentTitles, sourceFile: chat.sourceFile || null, selectedQuote: chat.selectedQuote || '', score, excerpts });
       }
       result.matches = candidates.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, 6);
     }

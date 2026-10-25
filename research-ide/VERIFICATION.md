@@ -62,3 +62,35 @@ new selection-position persistence path were not exercised end to end. Older
 ambiguous repeated quotes use the first occurrence because their original
 position was never stored. New position metadata uses the existing ignored
 local state file. No dependencies were added.
+
+
+## Questions about files, 25 October 2026
+
+Live browser verification on the Wi-Fi origin used the existing `VERIFY.txt`
+fixture without changing it. Drag-selected “Second line.” in the new reading
+view, opened a file chat, and asked the agent to report its received context.
+The agent returned the correct path `research-ide/VERIFY.txt`, line 2, and quote.
+The Open file action returned to a marked passage; tapping the marker opened
+that saved conversation in a popup. Reloading preserved the source link and
+marker. Switched between Edit and Read without changing the file. The whole-file
+button opened a separate chat with the file path and no invented passage.
+Two verification file chats remain intentionally in ignored local state (one
+contains the agent context check; the whole-file chat is empty).
+
+`node --test research-ide/tests/*.test.mjs` passes 11 tests covering file selection
+normalization, invalid/oversized ranges, first-turn file context, whole-file
+context, ordinary chat compatibility, and the existing marker cases plus
+ambiguous matches after file changes. Live API checks reject path traversal,
+invalid offsets, and selections that differ from disk. Syntax checks pass for
+`server.mjs`, `file-context.mjs`, `public/app.js`, and `scripts/read_context.mjs`.
+`git diff --check` passes. No dependencies were added.
+
+Adversarial review checked draft preservation, stale file selections, source
+path confinement, quote escaping, and existing chat branching. Added protection
+against replacing newly typed edits with a pending file load and against
+silently marking a different occurrence after an ambiguous file edit. No
+blocking findings remain. Physical iPad Safari and its selection/keyboard
+gestures remain untested. File markers relocate by quote when unique; they are
+not a full document-version anchor system. The saved quote remains historical
+context if the file later changes. Screenshots are temporary artifacts under
+`/tmp/fieldwork-file-*.png`; runtime chat state remains ignored.

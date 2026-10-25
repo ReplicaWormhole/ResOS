@@ -174,3 +174,11 @@ body.sidebar-collapsed.editor-open .ide-grid { grid-template-columns: minmax(300
 .branch-popup-quote { flex-shrink: 0; max-height: 90px; overflow: auto; margin: 14px 18px 0; border-left: 3px solid #9fb777; padding-left: 12px; color: var(--muted); white-space: pre-wrap; }
 .branch-popup-transcript { min-height: 80px; overflow: auto; overscroll-behavior: contain; padding: 22px 18px 0; }
 .branch-popup footer { padding: 12px 18px; border-top: 1px solid var(--line); }
+
+.file-reading { flex: 1; min-height: 0; overflow: auto; padding: 18px; }
+.file-preview { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.8 var(--mono); user-select: text; -webkit-user-select: text; }
+.file-followups { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+.file-followups:empty { display: none; }
+.panel-tabs { flex-wrap: wrap; min-height: 54px; flex-basis: auto; padding-top: 8px; padding-bottom: 8px; }
+.panel-tabs .editor-tab { flex: 1; }
+.panel-tabs .button { margin-left: 0; }

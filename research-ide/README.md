@@ -21,6 +21,17 @@ as a follow-up button under the answer. New selections record their position so
 repeated phrases can be distinguished. Older selections only stored the quote,
 so a repeated phrase in an older answer is matched to its first occurrence.
 
+Files open in a reading view. Select a passage and choose **Ask about selection**,
+or use **Ask about file** for a question about the whole file. A separate chat
+keeps the source path, line number, and selected quote visible. **Open file**
+returns to the source. Selected passages with questions are highlighted; tapping
+them opens the same conversation popup used for chat answers. Questions about
+the whole file and passages that have changed remain in the list below the file.
+Use **Edit** to change the file and **Read** to return to its marked reading view.
+Save edits before asking about them. The agent receives the saved quote and path
+and can read the file for more context. This supports the UTF-8 text files already
+available in the browser; PDF/image document viewing is not included.
+
 ## Run
 
 Requires Node.js and the Codex CLI installed and signed in on this computer.

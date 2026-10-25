@@ -25,6 +25,8 @@ let activeChatId = null;
 let creatingChat = false;
 let openedFile = null;
 let fileDirty = false;
+let fileEditing = false;
+let fileLoadSequence = 0;
 let fileNewline = '\n';
 let selectedSpan = null;
 let renderedChatId = null;
@@ -114,6 +116,7 @@ function passageRange(text, chat, message) {
     return [chat.selectedStart, chat.selectedStart + quote.length];
   }
   const start = text.indexOf(quote);
+  if (chat.sourceFile && start !== text.lastIndexOf(quote)) return null;
   if (start >= 0) return [start, start + quote.length];
   // Older selections may use browser-inserted newlines or raw Markdown.
   const normalized = [], positions = [];
@@ -294,9 +297,36 @@ function updateGutter() {
   const count = Math.max(1, el.editor.value.split('\n').length);
   el.lineNumbers.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
 }
+function renderFilePreview() {
+  if (!openedFile || fileEditing) return;
+  const preview = $('#filePreview');
+  const children = appState.conversations.filter(chat => chat.sourceFile?.path === openedFile);
+  const signature = JSON.stringify([openedFile, el.editor.value, children.map(chat => [chat.id, chat.selectedQuote, chat.selectedStart])]);
+  if (preview.dataset.signature === signature) return;
+  preview.dataset.signature = signature;
+  preview.textContent = el.editor.value;
+  const unmatched = markLinkedPassages(preview, { id: 'file:' + openedFile }, children.filter(chat => chat.selectedQuote));
+  const links = $('#fileFollowups');
+  links.replaceChildren();
+  for (const chat of children) {
+    const button = document.createElement('button');
+    button.className = 'text-button';
+    button.textContent = '↳ ' + chat.title + (unmatched.includes(chat) ? ' (passage changed)' : '');
+    button.onclick = () => openBranchPopup([chat.id]);
+    links.append(button);
+  }
+}
 function showEditor() {
   el.welcome.hidden = Boolean(openedFile);
-  el.editorView.hidden = !openedFile;
+  el.editorView.hidden = !openedFile || !fileEditing;
+  $('#fileReading').hidden = !openedFile || fileEditing;
+  $('#toggleFileEdit').disabled = !openedFile;
+  $('#toggleFileEdit').textContent = fileEditing ? 'Read' : 'Edit';
+  $('#askFile').disabled = !openedFile || fileDirty || creatingChat;
+  $('#askFile').textContent = (fileEditing ? el.editor.selectionEnd > el.editor.selectionStart : selectedSpan?.filePath === openedFile) ? 'Ask about selection ↗' : 'Ask about file ↗';
+  $('#askFile').title = fileDirty ? 'Save your edits before asking about this file' : '';
+  el.save.hidden = !fileEditing;
+  renderFilePreview();
   el.editorPath.textContent = openedFile || 'Welcome';
   el.save.disabled = !openedFile || !fileDirty;
   el.dirty.hidden = !fileDirty;
@@ -304,9 +334,17 @@ function showEditor() {
 }
 async function openFile(relative, reveal = true) {
   if (fileDirty && openedFile !== relative && !window.confirm('Discard unsaved changes to ' + openedFile + '?')) return;
+  if (fileDirty && openedFile === relative) { if (reveal) { setEditorOpen(true); closeNavigation(); } return; }
+  const loadSequence = ++fileLoadSequence;
+  const previousFile = openedFile, previousText = el.editor.value;
   try {
     const file = await api('/api/file?path=' + encodeURIComponent(relative));
+    if (loadSequence !== fileLoadSequence) return;
+    if (openedFile === previousFile && el.editor.value !== previousText) { showToast('File opening cancelled to preserve your latest edits.'); return; }
+    selectedSpan = null;
+    el.selectionAction.hidden = true;
     openedFile = file.path;
+    fileEditing = false;
     fileNewline = file.content.includes('\r\n') ? '\r\n' : '\n';
     el.editor.value = file.content;
     fileDirty = false;
@@ -325,18 +363,23 @@ async function saveFile() {
     showToast('Saved ' + openedFile);
   } catch (error) { showToast(error.message); }
 }
+function openChatSource() {
+  const chat = currentChat();
+  if (chat?.sourceFile) openFile(chat.sourceFile.path);
+  else if (chat?.parentId) selectChat(chat.parentId);
+}
 function renderQuote(chat) {
-  if (chat?.selectedQuote) {
-    el.quote.hidden = false;
-    el.quoteText.textContent = chat.selectedQuote;
-    el.chatOrigin.hidden = false;
-    const parent = appState.conversations.find(item => item.id === chat.parentId);
-    el.chatOrigin.innerHTML = 'Branched from <button type="button" id="originParent">' + escapeHtml(parent?.title || 'parent chat') + '</button>';
-    $('#originParent')?.addEventListener('click', () => selectChat(chat.parentId));
-  } else {
-    el.quote.hidden = true;
-    el.chatOrigin.hidden = true;
-  }
+  const hasSource = Boolean(chat?.selectedQuote || chat?.sourceFile);
+  el.quote.hidden = !hasSource;
+  el.chatOrigin.hidden = !hasSource;
+  if (!hasSource) return;
+  el.quoteText.textContent = chat.selectedQuote || 'Question about the whole file.';
+  $('#quoteLabel').textContent = chat.sourceFile ? 'SOURCE FILE' : 'BRANCHED FROM SELECTION';
+  el.quoteParent.textContent = chat.sourceFile ? 'Open file ↗' : 'Open parent ↗';
+  const parent = appState.conversations.find(item => item.id === chat.parentId);
+  const source = chat.sourceFile ? chat.sourceFile.path + (chat.sourceFile.line ? ':' + chat.sourceFile.line : '') : parent?.title || 'parent chat';
+  el.chatOrigin.innerHTML = (chat.sourceFile ? 'From ' : 'Branched from ') + '<button type="button" id="originParent">' + escapeHtml(source) + '</button>';
+  $('#originParent').addEventListener('click', openChatSource);
 }
 function renderChat(forceScroll = false) {
   const chat = currentChat();
@@ -352,6 +395,9 @@ function renderChat(forceScroll = false) {
   renderQuote(chat);
   const messages = chat?.messages || [];
   el.emptyChat.hidden = messages.length > 0;
+  el.emptyChat.querySelector('h3').textContent = chat?.sourceFile ? 'What would you like to know about this file?' : 'What are you working on?';
+  el.emptyChat.querySelector('p').textContent = chat?.sourceFile ? (chat.selectedQuote ? 'The file path and selected passage are attached to this conversation. Ask your question below.' : 'The file path is attached to this conversation. Ask your question below.') : 'Talk to your agent. Select part of any answer to ask about it in a linked conversation.';
+  el.emptyChat.querySelector('.starter-prompts').hidden = Boolean(chat?.sourceFile);
   if (changedChat) el.transcript.querySelectorAll('.chat-message').forEach(node => node.remove());
   const existing = new Map([...el.transcript.querySelectorAll('.chat-message')].map(node => [node.dataset.messageId, node]));
   const retained = new Set();
@@ -416,6 +462,7 @@ function renderChat(forceScroll = false) {
   else if (stickToBottom) el.transcript.scrollTop = el.transcript.scrollHeight;
   renderChatTree();
   renderBranchPopup();
+  renderFilePreview();
 }
 async function selectChat(id) {
   $('#branchPopup').close();
@@ -467,7 +514,32 @@ async function createChat() {
     if (activeChatId) el.composer.focus();
   }
 }
+async function askAboutFile() {
+  if (!openedFile || fileDirty || creatingChat) return;
+  let span = selectedSpan?.filePath === openedFile ? selectedSpan : null;
+  if (fileEditing && el.editor.selectionEnd > el.editor.selectionStart) {
+    const start = el.editor.selectionStart, end = el.editor.selectionEnd;
+    span = { filePath: openedFile, start, end, quote: el.editor.value.slice(start, end).trim() };
+  }
+  if (span && (!span.quote || span.quote.length > 12000)) { showToast('Select between 1 and 12,000 characters.'); return; }
+  saveDraft();
+  const path = openedFile;
+  creatingChat = true;
+  selectedSpan = null;
+  el.selectionAction.hidden = true;
+  renderChat(); showEditor();
+  try {
+    const result = await api('/api/chat/file', { method: 'POST', body: JSON.stringify({ path, wholeFile: !span,
+      start: span?.start, end: span?.end, selectedQuote: span?.quote }) });
+    appState.conversations.push(result.chat);
+    await selectChat(result.chat.id);
+    activateNav('chats');
+    showToast('File linked. Ask your question below.');
+  } catch (error) { showToast(error.message); }
+  finally { creatingChat = false; renderChat(); showEditor(); el.composer.focus(); }
+}
 async function branchFromSelection() {
+  if (selectedSpan?.filePath) { await askAboutFile(); return; }
   if (!selectedSpan || !activeChatId || creatingChat) return;
   saveDraft();
   const parentId = activeChatId;
@@ -607,11 +679,28 @@ function showSelectionAction() {
   if ($('#branchPopup').open) { el.selectionAction.hidden = true; return; }
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+    selectedSpan = null;
+    $('#askFile').textContent = 'Ask about file ↗';
     el.selectionAction.hidden = true;
     return;
   }
   const range = selection.getRangeAt(0);
   const node = range.commonAncestorContainer;
+  const preview = $('#filePreview');
+  if (preview.contains(range.startContainer) && preview.contains(range.endContainer)) {
+    if (fileDirty) { el.selectionAction.hidden = true; return; }
+    const prefix = document.createRange();
+    prefix.selectNodeContents(preview); prefix.setEnd(range.startContainer, range.startOffset);
+    const start = passageText(prefix.cloneContents()).length;
+    const raw = passageText(range.cloneContents());
+    selectedSpan = { filePath: openedFile, start, end: start + raw.length, quote: raw.trim() };
+    const rect = range.getBoundingClientRect();
+    el.selectionAction.hidden = false;
+    el.selectionAction.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 200)) + 'px';
+    el.selectionAction.style.top = Math.max(8, rect.top - 44) + 'px';
+    $('#askFile').textContent = 'Ask about selection ↗';
+    return;
+  }
   const message = node.nodeType === Node.ELEMENT_NODE ? node.closest?.('.chat-message.assistant') : node.parentElement?.closest('.chat-message.assistant');
   if (!message?.dataset.turnId || !message.closest('#transcript')) {
     el.selectionAction.hidden = true;
@@ -637,6 +726,12 @@ $('#closeBranchPopup').addEventListener('click', () => $('#branchPopup').close()
 $('#openBranchChat').addEventListener('click', () => { if (popupChatId) selectChat(popupChatId); });
 $('#branchPopup').addEventListener('click', event => { if (event.target === $('#branchPopup')) { const rect = event.target.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close(); } });
 
+$('#askFile').addEventListener('pointerdown', event => event.preventDefault());
+$('#askFile').addEventListener('click', askAboutFile);
+$('#toggleFileEdit').addEventListener('click', () => { fileEditing = !fileEditing; selectedSpan = null; el.selectionAction.hidden = true; showEditor(); });
+for (const event of ['select', 'keyup', 'pointerup']) el.editor.addEventListener(event, () => {
+  $('#askFile').textContent = el.editor.selectionEnd > el.editor.selectionStart ? 'Ask about selection ↗' : 'Ask about file ↗';
+});
 el.filesTab.addEventListener('click', () => activateNav('files'));
 el.chatsTab.addEventListener('click', () => activateNav('chats'));
 $('#refreshFiles').addEventListener('click', () => renderDirectory());
@@ -648,7 +743,7 @@ $('#chatNewButton').addEventListener('click', createChat);
 $('#chatNavNew').addEventListener('click', createChat);
 $('#welcomeNewChat').addEventListener('click', createChat);
 $('#welcomeOpenFile').addEventListener('click', () => activateNav('files'));
-el.quoteParent.addEventListener('click', () => { const chat = currentChat(); if (chat?.parentId) selectChat(chat.parentId); });
+el.quoteParent.addEventListener('click', openChatSource);
 $('#composerForm').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
 el.composer.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !currentChat()?.busy) { event.preventDefault(); sendMessage(); }

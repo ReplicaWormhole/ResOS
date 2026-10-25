@@ -41,6 +41,8 @@
         <button id="closeEditor" class="icon-button" aria-label="Close file editor">×</button>
         <div id="editorTab" class="editor-tab empty-tab"><span class="file-glyph">⌘</span><span id="editorPath">Welcome</span></div>
         <div id="dirtyMark" class="dirty-mark" hidden>Unsaved</div>
+        <button id="askFile" class="button button-small" disabled>Ask about file ↗</button>
+        <button id="toggleFileEdit" class="button button-small" disabled>Edit</button>
         <button id="saveFile" class="button button-small" disabled>Save</button>
       </div>
       <div id="welcomeScreen" class="welcome-screen">
@@ -54,6 +56,7 @@
         </div>
         <div class="welcome-tip"><span>TIP</span> Select any answer text and choose “Ask about selection” to branch.</div>
       </div>
+      <div id="fileReading" class="file-reading" hidden><pre id="filePreview" class="file-preview" aria-label="File contents for reading" tabindex="0"></pre><div id="fileFollowups" class="file-followups" aria-label="Questions about this file"></div></div>
       <div id="editorView" class="editor-view" hidden>
         <div class="editor-gutter" id="lineNumbers" aria-hidden="true">1</div>
         <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File contents"></textarea>
@@ -71,7 +74,7 @@
       </div>
       <div id="connectionNotice" class="connection-notice" hidden><span id="connectionMessage"></span><button id="reconnectButton" class="button">Retry connection</button></div>
       <div id="selectedQuote" class="selected-quote" hidden>
-        <div class="quote-label"><span>BRANCHED FROM SELECTION</span><button id="quoteParentLink" class="text-button">Open parent ↗</button></div>
+        <div class="quote-label"><span id="quoteLabel">BRANCHED FROM SELECTION</span><button id="quoteParentLink" class="text-button">Open parent ↗</button></div>
         <blockquote id="quoteText"></blockquote>
       </div>
       <div id="approvalBar" class="approval-bar" hidden>

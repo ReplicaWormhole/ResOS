@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { fileSelection, firstQuestionText } from './file-context.mjs';
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -314,10 +315,7 @@ async function newThread(chatId) {
 async function startTurn(chat, question) {
   await agent.start();
   if (chat.busy) throw new Error('This chat already has an agent turn running.');
-  const text = chat.messages.length === 0 && chat.selectedQuote
-    ? 'We are continuing from a selected passage in a linked research chat. Treat the quote as context from the parent conversation.\n\nSelected passage:\n> ' +
-      chat.selectedQuote.replaceAll('\n', '\n> ') + '\n\nQuestion: ' + question
-    : question;
+  const text = firstQuestionText(chat, question);
   const hadHistory = chat.messages.some(message => message.role === 'user');
   if (!chat.codexThreadId) chat.codexThreadId = (await newThread(chat.id)).id;
   chat.messages.push({ id: randomUUID(), role: 'user', text: question, createdAt: new Date().toISOString() });
@@ -396,6 +394,28 @@ const server = http.createServer(async (request, response) => {
       const id = randomUUID();
       const thread = await newThread(id);
       const chat = { id, workspace, codexThreadId: thread.id, title: 'New chat', parentId: null, selectedQuote: '', parentTurnId: null, createdAt: new Date().toISOString(), lastUsedAt: new Date().toISOString(), messages: [] };
+      state.conversations.push(chat);
+      await persist();
+      sendJson(response, 201, { chat });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/chat/file') {
+      const body = await readJson(request);
+      const relative = boundedString(body.path, 2000, 'path');
+      const { actual, info } = await checkExisting(relative);
+      if (info.size > maxBody) throw new Error('Files over 2 MiB are not shown in this prototype.');
+      const content = new TextDecoder('utf-8', { fatal: true }).decode(await readFile(actual));
+      const normalizedPath = path.relative(workspace, workspacePath(relative));
+      const selection = body.wholeFile === true ? { selectedQuote: '', selectedStart: null, line: null }
+        : fileSelection(content, body.start, body.end);
+      if (body.wholeFile !== true && selection.selectedQuote !== body.selectedQuote) {
+        throw new Error('The file changed on disk. Reopen it and select the passage again.');
+      }
+      const id = randomUUID();
+      const chat = { id, workspace, codexThreadId: null, title: 'File: ' + normalizedPath + (selection.line ? ':' + selection.line : ''),
+        parentId: null, parentTurnId: null, parentMessageId: 'file:' + normalizedPath, ...selection,
+        sourceFile: { path: normalizedPath, line: selection.line, wholeFile: body.wholeFile === true },
+        createdAt: new Date().toISOString(), lastUsedAt: new Date().toISOString(), messages: [] };
       state.conversations.push(chat);
       await persist();
       sendJson(response, 201, { chat });
