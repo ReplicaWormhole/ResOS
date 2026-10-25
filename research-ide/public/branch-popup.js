@@ -1,4 +1,4 @@
-import { safePlainMath } from './markdown.js';
+import { safePlainMath, displayChatTitle } from './markdown.js';
 import { renderMessage, linkedChats } from './message-view.js';
 import { sessionRead, sessionWrite } from './browser-session.js';
 
@@ -74,7 +74,7 @@ export function createBranchPopup({ getConversations, onSelect, onOpen, onSend, 
     const approval = getApproval();
     query('#popupApprovalBar').hidden = !approval;
     query('#popupApprovalDescription').textContent = approval;
-    query('#branchPopupTitle').textContent = chat.title;
+    query('#branchPopupTitle').textContent = displayChatTitle(chat);
     query('#popupBack').hidden = !navigation.length;
     const choices = query('#branchPopupChoices');
     const choiceSignature = JSON.stringify([chats.map(item => [item.id, item.title]), chat.id]);

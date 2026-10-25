@@ -67,11 +67,24 @@ sent to the configured Codex model service as part of ordinary Codex use.
 ## Scope
 
 See [MVP.md](MVP.md) for the interaction and acceptance criteria. The prototype
-uses browser-native text editing, simple Markdown display, and no extra runtime
-dependencies. It does not yet provide project switching inside one running app,
+uses browser-native text editing, supported Markdown and bundled KaTeX maths.
+No npm installation or external rendering service is needed. It does not yet provide project switching inside one running app,
 syntax highlighting, image/file attachments, or an automatic context summary.
 
 ## How the browser code works
+
+Both user questions and agent answers render inline maths with $...$ or
+\(...\), and display maths with $$...$$ or \[...\]. Common equation and align
+environments work too. Notes and source quotes use the same renderer; editor
+text and revision history retain editable TeX source. Code stays literal.
+Incomplete expressions remain readable until the closing delimiter arrives;
+invalid or unsupported commands remain visible rather than breaking the chat.
+This is math typesetting, not a full LaTeX document/package compiler.
+
+KaTeX 0.19.1, its stylesheet and fonts are served from this computer, with no CDN
+request. Formulas are atomic source units for passage selection: selecting part
+of a rendered formula attaches its full original TeX to the discussion. Message
+source and saved revisions are unchanged by rendering.
 
 Messages now have stable node IDs, parent edges, immutable text revisions and
 revision authorship. **Edit** creates a human revision, **Add note** keeps your

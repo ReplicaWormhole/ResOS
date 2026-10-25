@@ -1,5 +1,36 @@
 # Manual verification, 24 October 2026
 
+## Maths in questions and responses, 25 October 2026
+
+Both message roles, both chat views, human notes and source quotes now render
+LaTeX mathematics using locally served KaTeX 0.19.1. The official npm archive's
+SHA-512 integrity was checked before extracting the ESM renderer, stylesheet,
+WOFF2 fonts and license. No CDN calls or npm installation are needed at runtime.
+
+Live browser verification re-opened the existing Calabi–Yau answer: inline
+dimensions and the displayed holomorphic volume form rendered as mathematics.
+Mouse selection across part of the displayed formula opened a follow-up with
+the entire original TeX expression, correctly validated by the server. That
+follow-up's user question and streamed reply both displayed an inline expression
+and a display integral. This was a rendering check; no manuscript content or
+mathematical claims were changed. One verification branch and response remain
+in ignored local notebook state.
+
+The dependency-free Node test suite passes 42 tests, including delimiter styles,
+equation/align environments, code/currency exclusions, protection from Markdown
+rewrites, malformed/incomplete expressions, disabled external resources and
+unsafe links, macro isolation, rendered-formula source offsets and marker
+integrity. Existing notebook/API tests also pass. Syntax and git diff --check
+checks pass. Physical iPad Safari selection/keyboard behavior remains untested.
+
+Adversarial review checked source escaping, trust settings, glyph duplication,
+selection offsets, code exclusions, streaming recovery and dependency assets.
+Math glyphs and MathML are never used as saved source coordinates: selection
+expands to the full original formula. Invalid TeX remains readable. This is a
+math renderer, not arbitrary document/package compilation. No blocking findings
+remain in the reviewed changes. KaTeX is the new bundled production dependency;
+the source archive and preview screenshots under /tmp are temporary artifacts.
+
 ## Persistent notebook and recursive discussions, 25 October 2026
 
 The live store migrated all 20 existing conversations to version 2. An owner-only

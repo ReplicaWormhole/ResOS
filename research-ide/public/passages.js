@@ -114,27 +114,27 @@ export function markLinkedPassages(body, message, children, onOpen) {
 }
 
 function makeMark(linked, label, onOpen) {
-      const mark = document.createElement('mark');
-      mark.className = 'linked-passage';
-      mark.tabIndex = 0;
-      mark.setAttribute('role', 'button');
-      mark.setAttribute('aria-haspopup', 'dialog');
-      mark.title = 'View ' + linked.length + ' linked chat' + (linked.length > 1 ? 's' : '');
-      mark.setAttribute('aria-label', mark.title + ': ' + label);
-      const open = event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (window.getSelection()?.toString()) {
-          return;
-        }
-        onOpen(linked.map(item => item.chat.id));
-      };
-      mark.addEventListener('click', open);
-      mark.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          window.getSelection()?.removeAllRanges();
-          open(event);
-        }
-      });
+  const mark = document.createElement('mark');
+  mark.className = 'linked-passage';
+  mark.tabIndex = 0;
+  mark.setAttribute('role', 'button');
+  mark.setAttribute('aria-haspopup', 'dialog');
+  mark.title = 'View ' + linked.length + ' linked chat' + (linked.length > 1 ? 's' : '');
+  mark.setAttribute('aria-label', mark.title + ': ' + label);
+  const open = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (window.getSelection()?.toString()) {
+      return;
+    }
+    onOpen(linked.map(item => item.chat.id));
+  };
+  mark.addEventListener('click', open);
+  mark.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      window.getSelection()?.removeAllRanges();
+      open(event);
+    }
+  });
   return mark;
 }

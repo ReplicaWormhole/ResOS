@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { safeMarkdown, safePlainMath, markdownText } from '../public/markdown.js';
+import { safeMarkdown, safePlainMath, markdownText, displayChatTitle } from '../public/markdown.js';
 import { splitMessage } from '../public/math-source.js';
 import { branchChat, finalizeRevision } from '../notebook-state.mjs';
 
@@ -49,4 +49,9 @@ test('untrusted math cannot load images, inject HTML or create executable links'
 test('macros cannot leak from one expression/message into another', () => {
   safeMarkdown(String.raw`\(\gdef\privateMacro{42}\privateMacro\)`);
   assert.match(safeMarkdown(String.raw`\(\privateMacro\)`), /<mtext>\\privateMacro<\/mtext>/);
+});
+
+test('automatic equation titles stay readable without a truncated TeX fragment', () => {
+  assert.equal(displayChatTitle({ title: 'About: truncated source', selectedQuote: String.raw`\[x^2\]` }), 'About this equation');
+  assert.equal(displayChatTitle({ title: 'My own title', selectedQuote: String.raw`\[x^2\]` }), 'My own title');
 });

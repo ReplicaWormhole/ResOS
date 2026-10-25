@@ -43,6 +43,13 @@ function renderText(value, markdown, math) {
 }
 export function safeMarkdown(value) { return renderText(value, true, true); }
 export function safePlainMath(value) { return renderText(value, false, true); }
+// Auto-generated titles truncate source text; an equation is clearer as a label
+// than as an incomplete TeX snippet. The full source is rendered below it.
+export function displayChatTitle(chat) {
+  const parts = splitMessage(chat?.selectedQuote || '').filter(part => part.raw.trim());
+  return chat?.title?.startsWith('About:') && parts.length === 1 && parts[0].type === 'math'
+    ? 'About this equation' : chat?.title || 'Research chat';
+}
 // Source coordinates remain TeX, independent of the visual/MathML glyph tree.
 export function markdownText(value) {
   return renderText(value, true, false).replace(/<br>/g, '\n').replace(/<[^>]*>/g, '')

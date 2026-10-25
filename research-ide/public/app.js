@@ -5,7 +5,7 @@
  * live in the small modules below. See ../README.md for the flow.
  */
 import { createApiClient, sessionRead, sessionWrite } from './browser-session.js';
-import { escapeHtml, safeMarkdown, safePlainMath } from './markdown.js';
+import { escapeHtml, safeMarkdown, safePlainMath, displayChatTitle } from './markdown.js';
 import { passageText, selectedPassage, markLinkedPassages } from './passages.js';
 import { createBranchPopup } from './branch-popup.js';
 import { renderMessage, linkedChats } from './message-view.js';
@@ -440,7 +440,7 @@ function renderChat(forceScroll = false) {
   const chat = currentChat();
   const changedChat = renderedChatId !== activeChatId;
   const stickToBottom = forceScroll || elements.transcript.scrollHeight - elements.transcript.scrollTop - elements.transcript.clientHeight < 100;
-  elements.chatTitle.textContent = chat?.title || 'Research chat';
+  elements.chatTitle.textContent = displayChatTitle(chat);
   elements.turnState.textContent = chat?.busy ? 'Agent working…' : 'Ready';
   elements.send.disabled = !chat || chat.busy || creatingChat;
   elements.send.hidden = Boolean(chat?.busy);
