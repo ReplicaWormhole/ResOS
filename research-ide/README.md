@@ -3,8 +3,11 @@
 A small local research IDE prototype: browse and edit a project, chat with the
 installed Codex agent, and open a linked chat from selected answer text. Each
 branch is a real Codex app-server thread forked through the selected answer's
-turn. The left navigation switches between files and a compact investigation
-thread list.
+turn. The left navigation switches between files and main conversations. Follow-up
+chats stay attached to their source passages and files, and do not appear in the
+conversation list. While reading a follow-up, its main conversation stays selected
+in the sidebar. File discussions are opened from the file’s highlights or question
+list.
 
 Chat fills the workspace by default. Switch conversations in the left sidebar,
 or select **Files & editor** to inspect and edit project files. On a tablet the

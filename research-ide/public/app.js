@@ -9,6 +9,7 @@ import { escapeHtml, safeMarkdown } from './markdown.js';
 import { passageText, markLinkedPassages } from './passages.js';
 import { createBranchPopup } from './branch-popup.js';
 import { applyConversationEvent } from './conversation-events.js';
+import { mainConversations, mainConversationId } from './conversation-navigation.js';
 
 // DOM references and transient state
 
@@ -157,56 +158,27 @@ function currentChat() {
   return appState.conversations.find(chat => chat.id === activeChatId) || null;
 }
 
-function chatDepth(chat, byId = new Map(appState.conversations.map(item => [item.id, item]))) {
-  let depth = 0;
-  let current = chat;
-  while (current?.parentId && depth < 10) {
-    current = byId.get(current.parentId);
-    if (!current) {
-      break;
-    }
-    depth++;
-  }
-  return depth;
-}
-
 function renderChatTree() {
-  const visibleChats = appState.conversations.filter(chat => (
-    chat.messages.length ||
-    chat.id === activeChatId ||
-    sessionRead('draft:' + chat.id) ||
-    appState.conversations.some(child => child.parentId === chat.id)
-  ));
-  const ordered = [];
-  const visited = new Set();
-  const append = chat => {
-    if (visited.has(chat.id)) {
-      return;
-    }
-    visited.add(chat.id);
-    ordered.push(chat);
-    visibleChats.filter(item => item.parentId === chat.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).forEach(append);
-  };
-  visibleChats.filter(chat => !chat.parentId).sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt)).forEach(append);
-  visibleChats.forEach(append);
+  const ordered = mainConversations(appState.conversations, activeChatId, sessionRead);
+  const mainId = mainConversationId(appState.conversations, activeChatId);
   if (!ordered.length) {
-    elements.chatTree.innerHTML = '<div class="no-items">Start a chat to begin an investigation.</div>';
+    elements.chatTree.innerHTML = '<div class="no-items">Start a main chat with +. Follow-ups stay with their source passages and files.</div>';
     return;
   }
   elements.chatTree.replaceChildren();
   for (const chat of ordered) {
     const button = document.createElement('button');
     button.className = 'chat-entry';
-    button.classList.toggle('active', chat.id === activeChatId);
+    button.classList.toggle('active', chat.id === mainId);
     button.classList.toggle('is-working', Boolean(chat.busy));
-    button.setAttribute('aria-current', String(chat.id === activeChatId));
+    button.setAttribute('aria-current', String(chat.id === mainId));
     button.dataset.chatId = chat.id;
-    button.style.paddingLeft = (8 + Math.min(chatDepth(chat), 5) * 13) + 'px';
+    button.style.paddingLeft = '8px';
     button.title = chat.title;
 
     const icon = document.createElement('span');
-    icon.className = chat.parentId ? 'branch-icon' : 'branch-icon root';
-    icon.textContent = chat.parentId ? '↳' : '◦';
+    icon.className = 'branch-icon root';
+    icon.textContent = '◦';
     const label = document.createElement('span');
     label.className = 'entry-label';
     label.textContent = chat.title;

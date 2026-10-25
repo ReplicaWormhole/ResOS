@@ -23,16 +23,18 @@ It is not the application architecture or source of truth.
    forking the Codex thread through the answer's turn. Carry the selected text
    as a visible source quote and ask a follow-up there.
 5. Continue each chat independently, switch between chats, and navigate their
-   parent/child links in a compact tree.
+   parent/child links through source highlights and popups. Only main chats
+   appear in the conversation list; file discussions remain with their files.
 6. Start the agent with the active thread; when needed, let it search saved chats
    and inspect the parent path through a small local context reader.
-7. Preserve the chats and tree across app restarts.
+7. Preserve the chats and source links across app restarts.
 
 ## Interface
 
 - Chat is the primary workspace, with a conversation list on the left. The file
   editor opens on demand, beside chat on a wide screen or over it on a tablet.
-- Left navigation switches between a project file tree and the chat tree.
+- Left navigation switches between a project file tree and the main chat list.
+  Follow-ups are opened from source passages or the question list in a file.
 - Chat is a familiar transcript and composer. A small action appears when text
   is selected in an assistant answer: **Ask about selection**.
 - A branch shows its origin quote and a link back to its parent. Switching chats
@@ -66,7 +68,7 @@ It is not the application architecture or source of truth.
 
 Cross-project memory, automatic research summaries, multi-agent workflows,
 collaboration, remote access, model selection, publishing, and a large graph
-visualization. The tree is simple navigation, not an additional research model.
+visualization. Source links provide simple navigation, not an additional research model.
 
 ## Acceptance checks
 
@@ -76,9 +78,9 @@ visualization. The tree is simple navigation, not an additional research model.
 - A real Codex app-server thread can answer a prompt and its reply streams in the
   chat pane.
 - A branch created from a selected answer is a distinct Codex thread, contains
-  the selected quote, and is linked to the parent in the navigation tree.
+  the selected quote, and is linked to the parent through a passage highlight or follow-up button.
 - A follow-up in either chat continues only that thread; reopening the app
-  restores the chat tree and messages.
+  restores the source links and messages.
 - The agent can retrieve a matching result from another saved chat by using the
   context helper, with its chat ID/title available for provenance.
 - Path traversal cannot read or write outside the chosen workspace.

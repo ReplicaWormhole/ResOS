@@ -127,3 +127,23 @@ explicit status comparisons, preserving the original handling of unknown
 statuses; a regression test covers it. No unresolved blocking findings remain.
 This validates the browser against simulated server responses; a fresh live
 Codex turn and physical iPad Safari were not exercised for this refactor.
+
+
+## Main conversations only, 25 October 2026
+
+The sidebar now lists root chats without a file source. Chat follow-ups (including
+nested ones) and file questions remain saved and accessible through the existing
+passage markers, fallback buttons, file question lists, and source navigation.
+The main ancestor stays selected when a chat follow-up is active. New main chats
+and main-chat drafts remain visible under the existing empty-chat rules.
+
+`node --test research-ide/tests/*.test.mjs` passes all 23 tests, including three
+new navigation tests covering active follow-ups, file questions, nested ancestors,
+cycles/missing IDs, main drafts and non-mutation of saved data. Syntax checks and
+`git diff --check` pass. In the live browser, verified the filtered sidebar,
+opened the existing “urrent wo” popup, then continued into that follow-up: the
+sidebar still contained only main chats. No chats were created or removed.
+
+Adversarial review found no blocking issues. Physical iPad Safari was not tested;
+this change uses the existing responsive list and popup controls. Screenshot
+`/tmp/fieldwork-main-conversations.png` is a temporary preview artifact.
