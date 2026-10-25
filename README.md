@@ -1,4 +1,4 @@
-# Fieldwork Research IDE
+# ResOS
 
 A local research notebook for working with project files and Codex. Keep persistent
 conversations, ask follow-up questions about selected passages, and return to the
@@ -23,8 +23,8 @@ on the computer that will run the app. No npm installation or frontend build is
 required; KaTeX is included with its license under `research-ide/public/vendor/`.
 
 ```sh
-git clone https://github.com/ReplicaWormhole/hds.git
-cd hds
+git clone https://github.com/ReplicaWormhole/ResOS.git
+cd ResOS
 node research-ide/server.mjs --workspace /absolute/path/to/your/project
 ```
 
