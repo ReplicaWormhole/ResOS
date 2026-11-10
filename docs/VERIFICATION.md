@@ -133,3 +133,30 @@ unsupported-method error.
 The fingerprint covers the full visible text buffer, using the editor's
 normalized line endings. External changes are rechecked periodically and
 every jump validates the range again before selecting it.
+
+## M07 · REL-01
+
+- A clean staged source snapshot passed `npm ci` and `npm run check` with
+  Node 24.14.0 and no model credentials. All 16 unit tests passed.
+  `npm run package:linux` built `resos_1.0.0_amd64.deb` with a cached
+  Electron 45.2.3 archive verified against the pinned Electron checksums.
+  The generated sidecar passed `sha256sum -c`.
+- `desktop-file-validate` and all six desktop tests passed on the extracted
+  package under Xvfb. The restore fixture checks full equality of the saved
+  project and conversations, then opens the restored note, excerpt, and
+  discussion's original revision. The tab test verifies both drafts exactly
+  after an immediate switch. The project persistence check also opened a
+  profile created with the 0.6.0 package.
+- `xvfb-run -a node scripts/desktop-codex-smoke.mjs` passed on the extracted
+  1.0.0 package with Codex CLI 0.167.0, including a streamed response and
+  persisted run IDs in a disposable project and profile.
+- A fresh Ubuntu 24.04 x86-64 container installed the same package using
+  `apt-get install`. The desktop entry passed validation and `ldd` found
+  every linked library. The container used Xvfb and the setuid Chromium
+  sandbox because it could not create unprivileged user namespaces. All
+  six desktop tests and the live Codex smoke test passed against the
+  installed executable. The live check used the signed-in host CLI over
+  a temporary Unix socket without mounting credentials in the container.
+- `actionlint` 1.7.10 passed both workflows. The manual release workflow
+  has not run on GitHub. It needs to be present on the repository's default
+  branch, currently the legacy `master`, before it can be dispatched.

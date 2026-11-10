@@ -2,8 +2,9 @@
 
 The [spec](SPEC.md) owns requirements and acceptance criteria. This roadmap
 sets their order. Each milestone closes with its checks and a short verification
-record. See [verification](VERIFICATION.md) for M01 through M06.
-M07 is the next implementation milestone.
+record. The v1 desktop milestones are complete locally. See
+[verification](VERIFICATION.md) for M01 through M07 and the hosted release
+workflow status.
 
 ```mermaid
 flowchart TD

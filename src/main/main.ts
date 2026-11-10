@@ -255,6 +255,7 @@ async function openWindow(): Promise<void> {
   const runtimeMode = process.env.RESOS_RUNTIME === 'demo' ? 'demo' : 'codex';
   const codex = new CodexRuntime(
     runtimeMode === 'demo' ? 'codex' : await findCodex(),
+    app.getVersion(),
   );
   const chats = new ChatService(
     notebook,

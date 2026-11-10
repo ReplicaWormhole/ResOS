@@ -29,7 +29,10 @@ function prompt(request: ChatRequest): string {
 export class CodexRuntime implements ChatRuntime {
   private readonly clients = new Set<StdioRpc>();
 
-  constructor(private readonly executable: string) {}
+  constructor(
+    private readonly executable: string,
+    private readonly clientVersion = 'dev',
+  ) {}
 
   close(): void {
     for (const client of this.clients) client.close();
@@ -171,7 +174,11 @@ export class CodexRuntime implements ChatRuntime {
 
     try {
       await client.call('initialize', {
-        clientInfo: { name: 'resos', title: 'ResOS', version: '0.4.0' },
+        clientInfo: {
+          name: 'resos',
+          title: 'ResOS',
+          version: this.clientVersion,
+        },
       });
       client.notify('initialized');
       const started = await client.call('thread/start', {

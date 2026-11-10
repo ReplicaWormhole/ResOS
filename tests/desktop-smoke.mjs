@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -9,7 +11,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { test } from 'node:test';
 import { _electron as electron } from 'playwright-core';
 
@@ -181,7 +183,7 @@ test(
           ),
       );
       await contents.press('Control+End');
-      await window.keyboard.insertText('TeX draft');
+      await contents.pressSequentially('TeX draft', { delay: 12 });
 
       await window
         .getByRole('button', { name: 'readme.md', exact: true })
@@ -193,12 +195,16 @@ test(
         .filter({ hasText: 'Initial heading' })
         .waitFor();
       await contents.press('Control+End');
-      await window.keyboard.insertText('Markdown draft');
+      await contents.pressSequentially('Markdown draft', { delay: 12 });
       await mdTab.press('ArrowLeft');
-      assert.match(await contents.innerText(), /TeX draft/);
+      assert.deepEqual(await contents.locator('.cm-line').allTextContents(), [
+        '\\section{Research}',
+        'TeX draft',
+      ]);
       await contents.press('Control+f');
       const search = window.locator('.cm-search input[name=search]');
-      await search.pressSequentially('TeX draft');
+      await search.fill('TeX draft');
+      await search.press('End');
       await search.press('Enter');
       await contents
         .locator('.cm-searchMatch-selected')
@@ -210,7 +216,7 @@ test(
       await window.getByRole('button', { name: 'script.py' }).click();
       await contents.locator('span').filter({ hasText: /^def$/ }).waitFor();
       await contents.press('Control+End');
-      await window.keyboard.insertText('# Beta draft');
+      await contents.pressSequentially('# Beta draft', { delay: 12 });
       await contents.press('Control+s');
       await window.getByText(/Saved on disk/).waitFor();
       assert.equal(
@@ -221,7 +227,10 @@ test(
       await window.getByRole('button', { name: 'Alpha', exact: true }).click();
       assert.match(await contents.innerText(), /TeX draft/);
       await mdTab.click();
-      assert.match(await contents.innerText(), /Markdown draft/);
+      assert.deepEqual(await contents.locator('.cm-line').allTextContents(), [
+        '# Initial heading',
+        'Markdown draft',
+      ]);
       assert.equal(await readFile(md, 'utf8'), '# Initial heading\n');
 
       await window.getByRole('tab', { name: 'draft.tex' }).click();
@@ -706,6 +715,158 @@ test(
       assert.equal(chat.turns[0].excerpts[0].unsaved, true);
     } finally {
       await reopened.close();
+    }
+  },
+);
+
+test(
+  'a backup restored into a fresh profile retains projects, revisions, and both source types',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-restore-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'Fixture');
+    const backup = join(root, 'backup');
+    const originalConfig = join(root, 'original-config');
+    const restoredConfig = join(root, 'restored-config');
+    await mkdir(projectRoot);
+    await mkdir(backup, { mode: 0o700 });
+    const text = 'Pinned text';
+    await writeFile(join(projectRoot, 'fixture.txt'), text);
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = (config) =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: { ...process.env, RESOS_RUNTIME: 'demo', XDG_CONFIG_HOME: config },
+        timeout: 15_000,
+      });
+    const original = await launch(originalConfig);
+    let saved;
+    let dataDir;
+    try {
+      await original.evaluate(({ dialog }, path) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [path],
+        });
+      }, projectRoot);
+      const window = await original.firstWindow();
+      await window.getByRole('button', { name: 'Add Project' }).click();
+      await window.getByRole('button', { name: 'New chat' }).click();
+      await window.locator('#chat-input:enabled').waitFor();
+      const [project] = await window.evaluate(() =>
+        window.resos.listProjects(),
+      );
+      const [chat] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        project.id,
+      );
+      const excerpt = {
+        projectId: project.id,
+        path: 'fixture.txt',
+        text,
+        start: 0,
+        end: text.length,
+        startLine: 1,
+        endLine: 1,
+        capturedAt: '2026-11-10T12:00:00.000Z',
+        unsaved: false,
+        fingerprint: createHash('sha256').update(text).digest('hex'),
+      };
+      await window.evaluate(
+        ({ projectId, chatId, excerpt }) =>
+          window.resos.sendChat(
+            projectId,
+            chatId,
+            'Original question',
+            'backup-fixture',
+            [excerpt],
+          ),
+        { projectId: project.id, chatId: chat.id, excerpt },
+      );
+      await window.locator('#chat-transcript [data-status=complete]').waitFor();
+      const [record] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        project.id,
+      );
+      const turn = record.turns[0];
+      const address = {
+        conversationId: chat.id,
+        messageId: turn.id,
+        revisionId: turn.id,
+      };
+      await window.evaluate(
+        async ({ projectId, address }) => {
+          await window.resos.addMessageNote(
+            projectId,
+            address,
+            'Original note',
+          );
+          await window.resos.createDiscussion(projectId, {
+            ...address,
+            start: 0,
+            end: 8,
+            quote: 'Original',
+          });
+          await window.resos.reviseMessage(
+            projectId,
+            address,
+            'Edited question',
+          );
+        },
+        { projectId: project.id, address },
+      );
+      saved = {
+        project,
+        chats: await window.evaluate(
+          (id) => window.resos.listChats(id),
+          project.id,
+        ),
+      };
+      dataDir = await original.evaluate(({ app }) => app.getPath('userData'));
+      assert.ok(dataDir.startsWith(originalConfig + '/'));
+    } finally {
+      await original.close();
+    }
+
+    const restoredData = join(restoredConfig, basename(dataDir));
+    await mkdir(restoredData, { recursive: true, mode: 0o700 });
+    for (const file of ['projects.json', 'notebook.json']) {
+      await copyFile(join(dataDir, file), join(backup, file));
+      await copyFile(join(backup, file), join(restoredData, file));
+    }
+
+    const restored = await launch(restoredConfig);
+    try {
+      const window = await restored.firstWindow();
+      const transcript = window.locator('#chat-transcript');
+      await transcript.getByText('Edited question', { exact: true }).waitFor();
+      assert.deepEqual(
+        await window.evaluate(() => window.resos.listProjects()),
+        [saved.project],
+      );
+      assert.deepEqual(
+        await window.evaluate(
+          (id) => window.resos.listChats(id),
+          saved.project.id,
+        ),
+        saved.chats,
+      );
+      await transcript.getByText('Original note', { exact: true }).waitFor();
+      await transcript.getByText('Pinned text', { exact: true }).waitFor();
+      await transcript
+        .getByRole('button', { name: /Open discussion.*earlier revision/ })
+        .click();
+      await transcript.getByText('Discussion source').waitFor();
+      await transcript.getByText('Source revision', { exact: true }).click();
+      assert.match(
+        await transcript.locator('.discussion-source pre').innerText(),
+        /Original question/,
+      );
+    } finally {
+      await restored.close();
     }
   },
 );

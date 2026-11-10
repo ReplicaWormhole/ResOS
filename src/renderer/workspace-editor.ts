@@ -28,6 +28,7 @@ const styleNonce = EditorView.cspNonce.of(
 interface Tab {
   readonly path: string;
   state: EditorState;
+  view?: EditorView;
   cleanDoc: Text;
   revision: string;
   saving: boolean;
@@ -70,19 +71,18 @@ export class WorkspaceEditor {
   )!;
   private changed: () => void = () => {};
   private readonly groups = new Map<string, TabGroup>();
-  private readonly view: EditorView;
+  private readonly editorHost =
+    document.querySelector<HTMLElement>('#text-editor')!;
+  private shown?: Tab;
   private projectId?: string;
   private checkingDisk = false;
 
   constructor(private readonly api: DesktopApi) {
-    this.view = new EditorView({
-      parent: document.querySelector<HTMLElement>('#text-editor')!,
-      extensions: [styleNonce],
-    });
     this.saveButton.addEventListener('click', () => void this.save());
-    document
-      .querySelector('#find-in-file')!
-      .addEventListener('click', () => openSearchPanel(this.view));
+    document.querySelector('#find-in-file')!.addEventListener('click', () => {
+      const view = this.current?.view;
+      if (view) openSearchPanel(view);
+    });
     document
       .querySelector('#reload-file')!
       .addEventListener('click', () => void this.reload());
@@ -170,12 +170,12 @@ export class WorkspaceEditor {
       !(await this.canJump(excerpt))
     )
       return false;
-    if (this.current !== tab) return false;
-    this.view.dispatch({
+    if (this.current !== tab || !tab.view) return false;
+    tab.view.dispatch({
       selection: { anchor: excerpt.start, head: excerpt.end },
       scrollIntoView: true,
     });
-    this.view.focus();
+    tab.view.focus();
     return true;
   }
 
@@ -220,7 +220,7 @@ export class WorkspaceEditor {
         this.renderTabs();
         if (request === group.openRequest) {
           this.error.hidden = true;
-          this.view.focus();
+          tab.view?.focus();
         }
       }
     } catch (error) {
@@ -299,7 +299,7 @@ export class WorkspaceEditor {
         button.setAttribute('aria-label', button.textContent);
         button.addEventListener('click', () => {
           this.activate(group, tab);
-          this.view.focus();
+          tab.view?.focus();
         });
         button.addEventListener('keydown', (event) => {
           let next: number;
@@ -335,10 +335,20 @@ export class WorkspaceEditor {
     const tab = this.current;
     this.panel.hidden = !tab;
     this.empty.hidden = Boolean(tab);
+    if (this.shown !== tab) {
+      if (this.shown?.view) this.shown.view.dom.hidden = true;
+      this.shown = tab;
+    }
     if (tab) {
       const button = this.tabList.querySelector('[aria-selected=true]');
       if (button) this.panel.setAttribute('aria-labelledby', button.id);
-      if (this.view.state !== tab.state) this.view.setState(tab.state);
+      // Keep each tab's DOM input observer attached to its own buffer.
+      const view = (tab.view ??= new EditorView({
+        parent: this.editorHost,
+        state: tab.state,
+      }));
+      if (view.state !== tab.state) view.setState(tab.state);
+      view.dom.hidden = false;
     }
     this.renderStatus();
   }
@@ -441,11 +451,12 @@ export class WorkspaceEditor {
     const group = this.group(this.projectId);
     group.openRequest++;
     group.tabs.delete(tab.path);
+    tab.view?.destroy();
     this.changed();
     group.active = [...group.tabs.values()].at(-1);
     this.error.hidden = true;
     this.renderTabs();
-    if (group.active) this.view.focus();
+    group.active?.view?.focus();
   }
 
   private async checkDisk(): Promise<void> {

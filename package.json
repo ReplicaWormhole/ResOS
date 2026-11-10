@@ -1,6 +1,6 @@
 {
   "name": "resos",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "A local research IDE and Codex notebook",
   "author": "ResOS contributors",
@@ -21,7 +21,8 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "package:linux": "npm run build && electron-builder --linux deb --x64 --publish never",
     "test:desktop": "node --test tests/desktop-smoke.mjs",
-    "prebuild": "node scripts/clean-build.mjs"
+    "prebuild": "node scripts/clean-build.mjs",
+    "release:linux": "npm run check && npm run package:linux && node scripts/release-checksum.mjs"
   },
   "build": {
     "appId": "com.resos.desktop",
@@ -38,8 +39,22 @@
       "syncDesktopName": true
     },
     "deb": {
-      "packageCategory": "devel"
-    }
+      "packageCategory": "devel",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2t64",
+        "libgbm1"
+      ]
+    },
+    "publish": null
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

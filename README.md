@@ -92,30 +92,17 @@ Use **Remove excerpt** to detach a draft before sending.
 
 ## Package and verify
 
-Build the x86-64 Debian package on Ubuntu. Packaging and desktop checks use
-`fakeroot`, `desktop-file-utils`, and `xvfb` where a desktop display is
-unavailable.
+On Ubuntu x86-64, use the Node version in `.nvmrc` and install the
+packaging and display tools listed in the [release guide](docs/RELEASE.md).
 
 ```sh
-npm run check
-npm run package:linux
+npm ci
+npm run release:linux
 ```
 
-Install `release/resos_0.6.0_amd64.deb` through your package manager and
-launch **ResOS** from the application menu. To exercise the packaged app in
-an isolated profile without installing it system-wide:
-
-```sh
-package_root="$(mktemp -d)"
-dpkg-deb -x release/resos_0.6.0_amd64.deb "$package_root"
-desktop-file-validate "$package_root/usr/share/applications/resos.desktop"
-RESOS_EXECUTABLE="$package_root/opt/ResOS/resos" xvfb-run -a npm run test:desktop
-```
-
-The desktop test uses real Electron windows, IPC, and storage. It substitutes
-the folder picker's result so it can run unattended. To check the native
-dialog, launch the packaged app, cancel one folder selection, then add two
-folders and verify they both reappear after quitting and relaunching.
+The command checks the source, builds the Debian package, and writes a
+SHA-256 checksum in `release/`. See the [release guide](docs/RELEASE.md)
+for installation, verification, troubleshooting, and backup and restore.
 
 ## Project documentation
 
