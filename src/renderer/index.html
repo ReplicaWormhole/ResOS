@@ -30,6 +30,12 @@
       <header>
         <h1 id="project-title">Choose a project</h1>
         <p id="project-root">Add a folder to start a project.</p>
+        <div id="missing-project" hidden>
+          <p>
+            The project folder is unavailable. Saved chats are still available.
+          </p>
+          <button id="locate-project" type="button">Locate folder</button>
+        </div>
       </header>
       <p id="project-error" role="alert" hidden></p>
       <div id="workspace" hidden>
@@ -61,7 +67,26 @@
               Expand chat
             </button>
           </div>
-          <p>Project chat arrives in M03.</p>
+          <p class="chat-demo">
+            Demo runtime · Responses are generated locally.
+          </p>
+          <div class="chat-toolbar">
+            <label for="chat-list">Conversations</label>
+            <select id="chat-list"></select>
+            <button id="new-chat" type="button">New chat</button>
+          </div>
+          <div
+            id="chat-transcript"
+            aria-label="Conversation history"
+            tabindex="0"
+          ></div>
+          <p id="chat-error" role="alert" hidden></p>
+          <form id="chat-composer">
+            <label for="chat-input">Message</label>
+            <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
+            <button id="chat-send" type="submit">Send</button>
+          </form>
+          <p id="chat-status" role="status"></p>
         </section>
       </div>
     </main>

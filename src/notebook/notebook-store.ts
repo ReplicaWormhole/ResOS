@@ -1,0 +1,115 @@
+import type {
+  ChatJob,
+  ChatTurn,
+  Conversation,
+} from '../shared/notebook-api.js';
+import { readJson, replaceJson } from '../storage/local-json.js';
+
+interface NotebookData {
+  version: 1;
+  conversations: Conversation[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isJob(value: unknown): value is ChatJob {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.cwd === 'string' &&
+    typeof value.answer === 'string' &&
+    (value.error === undefined || typeof value.error === 'string') &&
+    (value.status === 'running' ||
+      value.status === 'complete' ||
+      value.status === 'interrupted' ||
+      value.status === 'failed')
+  );
+}
+
+function isTurn(value: unknown): value is ChatTurn {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.question === 'string' &&
+    Array.isArray(value.jobs) &&
+    value.jobs.length > 0 &&
+    value.jobs.every(isJob)
+  );
+}
+
+function isConversation(value: unknown): value is Conversation {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.projectId === 'string' &&
+    typeof value.title === 'string' &&
+    Array.isArray(value.turns) &&
+    value.turns.every(isTurn)
+  );
+}
+
+export class NotebookStore {
+  private pendingWrite: Promise<unknown> = Promise.resolve();
+  private data?: NotebookData;
+
+  constructor(private readonly filePath: string) {}
+
+  private async load(): Promise<NotebookData> {
+    if (this.data) return this.data;
+    const data = await readJson(this.filePath);
+    if (data === undefined) return { version: 1, conversations: [] };
+    if (
+      !isRecord(data) ||
+      data.version !== 1 ||
+      !Array.isArray(data.conversations) ||
+      !data.conversations.every(isConversation)
+    ) {
+      throw new Error('The saved notebook has an unsupported format.');
+    }
+    return { version: 1, conversations: data.conversations };
+  }
+
+  async list(projectId: string): Promise<Conversation[]> {
+    await this.pendingWrite;
+    return structuredClone(
+      (await this.load()).conversations.filter(
+        (chat) => chat.projectId === projectId,
+      ),
+    );
+  }
+
+  change<T>(update: (conversations: Conversation[]) => T): Promise<T> {
+    const write = this.pendingWrite.then(async () => {
+      const next = structuredClone(await this.load());
+      const result = update(next.conversations);
+      await replaceJson(this.filePath, next);
+      this.data = next;
+      return structuredClone(result);
+    });
+    this.pendingWrite = write.catch(() => {});
+    return write;
+  }
+
+  async recover(): Promise<void> {
+    const { conversations } = await this.load();
+    if (
+      !conversations.some((chat) =>
+        chat.turns.some((turn) =>
+          turn.jobs.some((job) => job.status === 'running'),
+        ),
+      )
+    )
+      return;
+    await this.change((chats) => {
+      for (const chat of chats) {
+        for (const turn of chat.turns) {
+          for (const job of turn.jobs) {
+            if (job.status === 'running') job.status = 'interrupted';
+          }
+        }
+      }
+    });
+  }
+}

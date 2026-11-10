@@ -1,4 +1,5 @@
 import type { DesktopApi, Project } from '../shared/desktop-api.js';
+import { ChatPane } from './chat-pane.js';
 import { FileTree } from './file-tree.js';
 import { WorkspaceEditor } from './workspace-editor.js';
 
@@ -15,9 +16,15 @@ const root = document.querySelector('#project-root')!;
 const errorMessage = document.querySelector<HTMLElement>('#project-error')!;
 
 let projects: readonly Project[] = [];
+let selected: Project | undefined;
+let available: boolean | undefined;
+let availabilityRequest = 0;
 const workspace = document.querySelector<HTMLElement>('#workspace')!;
 const files = document.querySelector<HTMLElement>('#files')!;
 const editor = new WorkspaceEditor(window.resos);
+const chat = new ChatPane(window.resos);
+const missing = document.querySelector<HTMLElement>('#missing-project')!;
+const locate = document.querySelector<HTMLButtonElement>('#locate-project')!;
 const tree = new FileTree(
   document.querySelector<HTMLElement>('#file-tree')!,
   window.resos,
@@ -51,12 +58,21 @@ for (const { pane, button } of paneButtons) {
 }
 
 function selectProject(project: Project): void {
+  const changed = selected !== project;
+  selected = project;
   title.textContent = project.name;
   root.textContent = project.root;
-  files.hidden = false;
   workspace.hidden = false;
-  tree.show(project);
-  editor.show(project);
+  if (changed) {
+    available = undefined;
+    files.hidden = true;
+    missing.hidden = true;
+    editor.hide();
+    chat.show(project.id);
+    chat.setAvailable(false);
+    workspace.dataset.available = 'checking';
+  }
+  void refreshAvailability();
   for (const button of list.querySelectorAll('button')) {
     if (button.dataset.projectId === project.id) {
       button.setAttribute('aria-current', 'true');
@@ -65,6 +81,58 @@ function selectProject(project: Project): void {
     }
   }
 }
+
+async function refreshAvailability(): Promise<void> {
+  const project = selected;
+  if (!project) return;
+  const request = ++availabilityRequest;
+  try {
+    const exists = await window.resos.projectAvailable(project.id);
+    if (
+      selected !== project ||
+      request !== availabilityRequest ||
+      available === exists
+    )
+      return;
+    available = exists;
+    workspace.dataset.available = String(exists);
+    files.hidden = !exists;
+    missing.hidden = exists;
+    chat.setAvailable(exists);
+    if (exists) {
+      tree.show(project);
+      editor.show(project);
+    } else {
+      editor.hide();
+      if (workspace.dataset.expanded === 'editor') expandPane('');
+    }
+  } catch (error) {
+    if (selected === project && request === availabilityRequest)
+      showError(error);
+  }
+}
+
+locate.addEventListener('click', async () => {
+  const original = selected;
+  if (!original) return;
+  locate.disabled = true;
+  errorMessage.hidden = true;
+  try {
+    const project = await window.resos.locateProject(original.id);
+    if (project) {
+      projects = projects.map((item) =>
+        item.id === project.id ? project : item,
+      );
+      renderProjects(selected === original ? project : selected);
+    }
+  } catch (error) {
+    if (selected === original) showError(error);
+  } finally {
+    locate.disabled = false;
+  }
+});
+window.addEventListener('focus', () => void refreshAvailability());
+window.setInterval(() => void refreshAvailability(), 1500);
 
 function renderProjects(selected: Project | undefined): void {
   list.replaceChildren();

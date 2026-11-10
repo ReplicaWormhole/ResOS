@@ -1,15 +1,29 @@
 import { randomUUID } from 'node:crypto';
-import {
-  mkdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { basename, dirname, isAbsolute } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
+import { basename, isAbsolute } from 'node:path';
 import type { Project } from '../shared/desktop-api.js';
+import { readJson, replaceJson } from '../storage/local-json.js';
+
+async function resolveFolder(folder: string): Promise<string> {
+  const root = await realpath(folder);
+  if (!(await stat(root)).isDirectory())
+    throw new Error('Choose an existing folder.');
+  return root;
+}
+
+export async function isAvailable(root: string): Promise<boolean> {
+  try {
+    return (await realpath(root)) === root && (await stat(root)).isDirectory();
+  } catch (error) {
+    if (
+      ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP'].includes(
+        (error as NodeJS.ErrnoException).code ?? '',
+      )
+    )
+      return false;
+    throw error;
+  }
+}
 
 function isProject(value: unknown): value is Project {
   return (
@@ -33,15 +47,8 @@ export class ProjectRegistry {
   constructor(private readonly filePath: string) {}
 
   async list(): Promise<readonly Project[]> {
-    let raw: string;
-    try {
-      raw = await readFile(this.filePath, 'utf8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw error;
-    }
-
-    const data: unknown = JSON.parse(raw);
+    const data = await readJson(this.filePath);
+    if (data === undefined) return [];
     if (
       typeof data !== 'object' ||
       data === null ||
@@ -57,41 +64,49 @@ export class ProjectRegistry {
   }
 
   add(folder: string): Promise<Project> {
-    const write = this.pendingWrite.then(async () => {
-      const root = await realpath(folder);
-      if (!(await stat(root)).isDirectory()) {
-        throw new Error('Choose an existing folder.');
-      }
-
-      const projects = await this.list();
+    return this.mutate(async (projects) => {
+      const root = await resolveFolder(folder);
       const existing = projects.find((project) => project.root === root);
       if (existing) return existing;
-
       const project = { id: randomUUID(), root, name: basename(root) || root };
-      await this.save([...projects, project]);
+      projects.push(project);
       return project;
     });
-
-    // A failed save must not prevent later attempts.
-    this.pendingWrite = write.catch(() => {});
-    return write;
   }
 
-  private async save(projects: readonly Project[]): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-    const temporary = `${this.filePath}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(
-        temporary,
-        JSON.stringify({ version: 1, projects }) + '\n',
-        {
-          mode: 0o600,
-          flag: 'wx',
-        },
-      );
-      await rename(temporary, this.filePath);
-    } finally {
-      await rm(temporary, { force: true });
-    }
+  relink(id: string, folder: string): Promise<Project> {
+    return this.mutate(async (projects) => {
+      const index = projects.findIndex((project) => project.id === id);
+      if (index < 0) throw new Error('Project not found.');
+      const project = projects[index]!;
+      if (await isAvailable(project.root))
+        throw new Error('The project folder is already available.');
+      const root = await resolveFolder(folder);
+      if (projects.some((other) => other.id !== id && other.root === root)) {
+        throw new Error('That folder is already assigned to another project.');
+      }
+      const updated = { ...project, root };
+      projects[index] = updated;
+      return updated;
+    });
+  }
+
+  private mutate(
+    update: (projects: Project[]) => Promise<Project>,
+  ): Promise<Project> {
+    const write = this.pendingWrite.then(async () => {
+      const previous = await this.list();
+      const projects = [...previous];
+      const project = await update(projects);
+      if (
+        projects.length !== previous.length ||
+        projects.some((item, index) => item !== previous[index])
+      ) {
+        await replaceJson(this.filePath, { version: 1, projects });
+      }
+      return project;
+    });
+    this.pendingWrite = write.catch(() => {});
+    return write;
   }
 }

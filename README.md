@@ -1,7 +1,8 @@
 # ResOS
 
 ResOS is a desktop research IDE and Codex notebook in development. Open an
-existing folder as a project, browse its files, and edit them in tabs.
+existing folder as a project, edit its files in tabs, and keep a separate chat
+history for each project.
 
 ## Run from source
 
@@ -15,8 +16,7 @@ npm start
 Choose **Add Project**, then select a folder. ResOS leaves your files where
 they are. The project list is saved under Electron's user-data directory as
 `projects.json`. On Linux that directory defaults to `~/.config/ResOS`.
-This build requires no Codex installation or model credentials. The chat pane
-is reserved for M03.
+This build requires no Codex installation or model credentials.
 
 ## Workspace editor
 
@@ -39,6 +39,18 @@ project list, use:
 XDG_CONFIG_HOME="$HOME/.config/resos-dev" npm start
 ```
 
+## Project chat
+
+Choose **New chat** and send a message to try the local demo runtime. The
+reply streams in the chat pane. Conversations and saved replies survive a
+restart. Each chat keeps its own draft while the app is open. Live Codex
+execution is scheduled for M04.
+
+If a project folder moves, open that project and choose **Locate folder**.
+Its conversation history stays accessible while the folder is missing.
+Choose the new location to re-enable the editor and sending. The notebook
+is saved beside the registry in the app data directory as `notebook.json`.
+
 ## Package and verify
 
 Build the x86-64 Debian package on Ubuntu. Packaging and desktop checks use
@@ -50,13 +62,13 @@ npm run check
 npm run package:linux
 ```
 
-Install `release/resos_0.2.0_amd64.deb` through your package manager and
+Install `release/resos_0.3.0_amd64.deb` through your package manager and
 launch **ResOS** from the application menu. To exercise the packaged app in
 an isolated profile without installing it system-wide:
 
 ```sh
 package_root="$(mktemp -d)"
-dpkg-deb -x release/resos_0.2.0_amd64.deb "$package_root"
+dpkg-deb -x release/resos_0.3.0_amd64.deb "$package_root"
 desktop-file-validate "$package_root/usr/share/applications/resos.desktop"
 RESOS_EXECUTABLE="$package_root/opt/ResOS/resos" xvfb-run -a npm run test:desktop
 ```
@@ -71,6 +83,7 @@ folders and verify they both reappear after quitting and relaunching.
 - [Spec and acceptance checks](docs/SPEC.md)
 - [Milestones, CI, and release gates](docs/ROADMAP.md)
 - [Desktop foundation decision](docs/decisions/0001-desktop-foundation.md)
+- [Notebook storage and prototype import](docs/decisions/0002-notebook-storage.md)
 - [Milestone verification](docs/VERIFICATION.md)
 - [Legacy prototype reference](docs/LEGACY.md)
 - [Repository working agreements](AGENTS.md)

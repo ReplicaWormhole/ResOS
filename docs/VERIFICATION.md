@@ -46,7 +46,9 @@ Tested locally on x86-64 Ubuntu 26.04 with Node 24.14.0 and Electron 45.2.3.
 - `npm run package:linux` produced `resos_0.2.0_amd64.deb`.
   `desktop-file-validate` and both desktop tests passed on the extracted
   package. The restart test created projects with the M01 package and
-  opened that profile in M02, retaining both stable IDs. Hosted CI is pending.
+  opened that profile in M02, retaining both stable IDs.
+  [Hosted M02 CI](https://github.com/ReplicaWormhole/ResOS/actions/runs/42827344107)
+  also installed the package and passed the desktop tests on Ubuntu 24.04.
 - `npm audit --omit=dev` reported zero production dependency advisories.
   CodeMirror is bundled into the renderer, with dependency licenses present
   in the application archive. esbuild is used for the renderer build.
@@ -55,3 +57,24 @@ File saves use a content revision check immediately before an atomic rename.
 There is a small race if an unrelated writer changes the file between the
 final check and the rename. Tabs and drafts live in memory while the
 application is open.
+
+## M03 · PROJ-02 and CHAT-01
+
+Tested locally on x86-64 Ubuntu 26.04 with Node 24.14.0 and Electron 45.2.3.
+
+- `npm run check` passed formatting, linting, typechecking, build, and all
+  eleven unit tests. The notebook tests cover partial writes, project/chat/cwd
+  isolation, startup recovery, and rejection of an unsupported snapshot.
+- `xvfb-run -a npm run test:desktop` passed all three tests. The chat test
+  switches projects during a response, exercises separate chat drafts,
+  verifies chat and file behavior while a folder is missing, rejects relinking
+  to a second project's root, and reopens the original history after relink
+  and restart. The saved attempt working directories match the roots at send.
+- `npm run package:linux` produced `resos_0.3.0_amd64.deb`.
+  `desktop-file-validate` and all three desktop tests passed on the extracted
+  package. The first desktop test opened a profile created by M02 in M03.
+  See the [storage decision](decisions/0002-notebook-storage.md) for
+  persistence and prototype import scope.
+
+Notebook storage rewrites a local JSON snapshot for each streamed chunk.
+Chat drafts live in memory while the application is open.

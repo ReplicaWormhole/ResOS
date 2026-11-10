@@ -102,6 +102,11 @@ export class WorkspaceEditor {
     void this.checkDisk();
   }
 
+  hide(): void {
+    this.projectId = undefined;
+    this.renderTabs();
+  }
+
   async open(project: Project, path: string): Promise<void> {
     const group = this.group(project.id);
     const request = ++group.openRequest;

@@ -99,8 +99,8 @@ The [legacy prototype reference](LEGACY.md) records the source baseline and
 its behavior documents. File excerpts and the desktop project workflow
 follow the requirements above. The prototype's LAN and tablet UI, remote
 collaboration, and a full extension or debugger ecosystem are outside the
-first desktop release. Import of prototype notebooks is a release decision
-to record before the durable store is implemented.
+first desktop release. See the [storage decision](decisions/0002-notebook-storage.md)
+for prototype import scope.
 
 [Electron process model]: https://www.electronjs.org/docs/latest/tutorial/process-model
 [Electron security guidance]: https://www.electronjs.org/docs/latest/tutorial/security

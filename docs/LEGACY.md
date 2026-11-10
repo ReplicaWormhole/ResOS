@@ -17,5 +17,5 @@ node --test research-ide/tests/*.test.mjs
 ```
 
 The legacy checkout retains its existing local notebook data. The desktop app
-uses a separate data directory. The M03 storage decision will record whether
-prototype notebook import is required.
+uses a separate data directory. The [M03 storage decision](decisions/0002-notebook-storage.md) records
+the current prototype import scope.

@@ -11,7 +11,11 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ProjectRegistry } from '../projects/project-registry.js';
+import { ChatService } from '../jobs/chat-service.js';
+import { NotebookStore } from '../notebook/notebook-store.js';
+import { isAvailable, ProjectRegistry } from '../projects/project-registry.js';
+import { demoRuntime } from '../runtime/demo-runtime.js';
+import type { Project } from '../shared/desktop-api.js';
 import {
   listDirectory,
   readFile,
@@ -28,6 +32,7 @@ protocol.registerSchemesAsPrivileged([
 function registerDesktopHandlers(
   window: BrowserWindow,
   registry: ProjectRegistry,
+  chats: ChatService,
 ): void {
   function requireAppFrame(event: IpcMainInvokeEvent): void {
     const frame = event.senderFrame;
@@ -40,31 +45,80 @@ function registerDesktopHandlers(
     }
   }
 
-  async function workspaceRoot(
+  async function projectFor(
     event: IpcMainInvokeEvent,
     id: unknown,
-  ): Promise<string> {
+  ): Promise<Project> {
     requireAppFrame(event);
     if (typeof id !== 'string' || id.length > 128)
       throw new Error('Invalid project ID.');
     const project = (await registry.list()).find((entry) => entry.id === id);
     if (!project) throw new Error('Project not found.');
-    return project.root;
+    return project;
+  }
+
+  async function availableProject(
+    event: IpcMainInvokeEvent,
+    id: unknown,
+  ): Promise<Project> {
+    const project = await projectFor(event, id);
+    if (!(await isAvailable(project.root)))
+      throw new Error('Locate the project folder before continuing.');
+    return project;
+  }
+
+  let pendingWorkspaceChange: Promise<unknown> = Promise.resolve();
+  function changeWorkspace<T>(operation: () => Promise<T>): Promise<T> {
+    const change = pendingWorkspaceChange.then(operation);
+    pendingWorkspaceChange = change.catch(() => {});
+    return change;
   }
 
   ipcMain.handle('workspace:list', async (event, id, path) =>
-    listDirectory(await workspaceRoot(event, id), path),
+    listDirectory((await availableProject(event, id)).root, path),
   );
   ipcMain.handle('workspace:read', async (event, id, path) =>
-    readFile(await workspaceRoot(event, id), path),
+    readFile((await availableProject(event, id)).root, path),
   );
-  let pendingSave: Promise<unknown> = Promise.resolve();
-  ipcMain.handle('workspace:save', async (event, id, path, revision, text) => {
-    const root = await workspaceRoot(event, id);
-    const write = pendingSave.then(() => saveFile(root, path, revision, text));
-    pendingSave = write.catch(() => {});
-    return write;
+  ipcMain.handle('workspace:save', (event, id, path, revision, text) =>
+    changeWorkspace(async () =>
+      saveFile((await availableProject(event, id)).root, path, revision, text),
+    ),
+  );
+
+  ipcMain.handle('projects:available', async (event, id) =>
+    isAvailable((await projectFor(event, id)).root),
+  );
+  ipcMain.handle('projects:locate', async (event, id) => {
+    const project = await projectFor(event, id);
+    if (chats.isRunning(project.id))
+      throw new Error('Wait for the running response before relinking.');
+    const choice = await dialog.showOpenDialog(window, {
+      title: 'Locate Project Folder',
+      properties: ['openDirectory'],
+    });
+    const folder = choice.filePaths[0];
+    if (choice.canceled || !folder) return null;
+    return changeWorkspace(() => {
+      if (chats.isRunning(project.id))
+        throw new Error('Wait for the running response before relinking.');
+      return registry.relink(project.id, folder);
+    });
   });
+
+  ipcMain.handle('chats:list', async (event, id) =>
+    chats.list((await projectFor(event, id)).id),
+  );
+  ipcMain.handle('chats:create', async (event, id) =>
+    chats.create((await projectFor(event, id)).id),
+  );
+  ipcMain.handle('chats:send', (event, id, chatId, question) =>
+    changeWorkspace(async () => {
+      if (typeof chatId !== 'string' || chatId.length > 128)
+        throw new Error('Invalid chat ID.');
+      await chats.send(await availableProject(event, id), chatId, question);
+    }),
+  );
 
   ipcMain.handle('projects:list', (event) => {
     requireAppFrame(event);
@@ -132,7 +186,14 @@ async function openWindow(): Promise<void> {
   const registry = new ProjectRegistry(
     join(app.getPath('userData'), 'projects.json'),
   );
-  registerDesktopHandlers(window, registry);
+  const notebook = new NotebookStore(
+    join(app.getPath('userData'), 'notebook.json'),
+  );
+  await notebook.recover();
+  const chats = new ChatService(notebook, demoRuntime, (id) => {
+    if (!window.isDestroyed()) window.webContents.send('chats:changed', id);
+  });
+  registerDesktopHandlers(window, registry, chats);
   await window.loadURL(homeUrl);
 }
 

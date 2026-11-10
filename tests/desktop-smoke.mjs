@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -276,6 +277,145 @@ test(
       assert.deepEqual(errors, []);
     } finally {
       await app.close();
+    }
+  },
+);
+
+test(
+  'chat keeps project and conversation identity across switches, relink, and restart',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-chat-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const alpha = join(root, 'Alpha');
+    const moved = join(root, 'Alpha moved');
+    const beta = join(root, 'Beta');
+    await Promise.all([mkdir(alpha), mkdir(beta)]);
+    await writeFile(join(alpha, 'notes.txt'), 'original project');
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = () =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: { ...process.env, XDG_CONFIG_HOME: join(root, 'config') },
+        timeout: 15_000,
+      });
+
+    const app = await launch();
+    try {
+      const window = await app.firstWindow();
+      async function choose(label, folder) {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [path],
+          });
+        }, folder);
+        await window.getByRole('button', { name: label, exact: true }).click();
+      }
+      const project = (name) =>
+        window.getByRole('button', { name, exact: true });
+      const composer = window.getByRole('textbox', { name: 'Message' });
+      const transcript = window.locator('#chat-transcript');
+      const send = window.getByRole('button', { name: 'Send', exact: true });
+      const newChat = window.getByRole('button', { name: 'New chat' });
+      const selector = window.getByLabel('Conversations');
+
+      await choose('Add Project', alpha);
+      await choose('Add Project', beta);
+      await project('Alpha').click();
+      await newChat.click();
+      await composer.fill('Alpha question');
+      await send.click();
+      await transcript.locator('[data-status=running]').waitFor();
+
+      await project('Beta').click();
+      await newChat.click();
+      await composer.fill('Beta question');
+      await send.click();
+      await transcript.locator('[data-status=complete]').waitFor();
+      assert.match(await transcript.innerText(), /Beta question/);
+      assert.doesNotMatch(await transcript.innerText(), /Alpha question/);
+
+      await project('Alpha').click();
+      await transcript.locator('[data-status=complete]').waitFor();
+      assert.match(await transcript.innerText(), /Alpha question/);
+      const originalChatId = await selector.inputValue();
+      await newChat.click();
+      await transcript
+        .getByText('Send a message to start this conversation.')
+        .waitFor();
+      await composer.fill('Draft on a different chat');
+      const draftId = await selector.inputValue();
+      assert.notEqual(draftId, originalChatId);
+      await selector.selectOption(originalChatId);
+      assert.equal(await composer.inputValue(), '');
+      await selector.selectOption(draftId);
+      assert.equal(await composer.inputValue(), 'Draft on a different chat');
+      await selector.selectOption(originalChatId);
+
+      const original = (
+        await window.evaluate(() => window.resos.listProjects())
+      )[0];
+      await rename(alpha, moved);
+      await window.getByText(/project folder is unavailable/).waitFor();
+      assert.match(await transcript.innerText(), /Alpha question/);
+      await composer.fill('After relinking');
+      assert.equal(await send.isDisabled(), true);
+      await assert.rejects(
+        window.evaluate(
+          ({ id, chat }) => window.resos.sendChat(id, chat, 'Blocked'),
+          { id: original.id, chat: originalChatId },
+        ),
+      );
+      await assert.rejects(
+        window.evaluate(
+          (id) => window.resos.readFile(id, 'notes.txt'),
+          original.id,
+        ),
+      );
+
+      await choose('Locate folder', beta);
+      await window.getByText(/already assigned to another project/).waitFor();
+      await choose('Locate folder', moved);
+      await window.locator('#workspace[data-available=true]').waitFor();
+      assert.equal(await window.locator('#project-root').textContent(), moved);
+      await project('notes.txt').click();
+      assert.equal(
+        await window
+          .getByRole('textbox', { name: 'File contents' })
+          .innerText(),
+        'original project',
+      );
+      await send.click();
+      await transcript.locator('[data-status=complete]').nth(1).waitFor();
+      const projects = await window.evaluate(() => window.resos.listProjects());
+      assert.equal(projects[0].id, original.id);
+      const history = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        original.id,
+      );
+      assert.deepEqual(
+        history[0].turns.map((turn) => turn.jobs[0].cwd),
+        [alpha, moved],
+      );
+      assert.equal(history[0].id, originalChatId);
+    } finally {
+      await app.close();
+    }
+    const reopened = await launch();
+    try {
+      const window = await reopened.firstWindow();
+      const transcript = window.locator('#chat-transcript');
+      await transcript.getByText('After relinking', { exact: true }).waitFor();
+      assert.match(await transcript.innerText(), /Alpha question/);
+      assert.equal(await window.locator('#project-root').textContent(), moved);
+      await window.getByRole('button', { name: 'Beta', exact: true }).click();
+      await transcript.getByText('Beta question', { exact: true }).waitFor();
+      assert.doesNotMatch(await transcript.innerText(), /Alpha question/);
+    } finally {
+      await reopened.close();
     }
   },
 );

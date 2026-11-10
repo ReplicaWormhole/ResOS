@@ -231,3 +231,78 @@ p {
   color: #172222;
   width: auto;
 }
+
+#workspace[data-available='false'],
+#workspace[data-available='checking'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#workspace[data-available='false'] #editor-pane,
+#workspace[data-available='checking'] #editor-pane {
+  display: none;
+}
+
+#missing-project button {
+  width: auto;
+}
+
+.chat-demo,
+#chat-status {
+  font-size: 0.85rem;
+}
+
+.chat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.chat-toolbar label,
+#chat-composer label {
+  font-size: 0.85rem;
+}
+
+.chat-toolbar select {
+  flex: 1 1 90px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-toolbar button,
+#chat-composer button {
+  width: auto;
+  padding: 4px 8px;
+}
+
+#chat-transcript {
+  min-height: 130px;
+  max-height: 39vh;
+  overflow: auto;
+}
+
+#chat-transcript article {
+  border-bottom: 1px solid var(--border);
+  margin: 8px 0;
+  padding: 4px 2px;
+  overflow-wrap: anywhere;
+}
+
+#chat-transcript article p {
+  white-space: pre-wrap;
+}
+
+#chat-composer {
+  display: grid;
+  gap: 5px;
+}
+
+#chat-composer textarea {
+  font: inherit;
+  resize: vertical;
+}
+
+#chat-composer button {
+  justify-self: start;
+}

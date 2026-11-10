@@ -1,12 +1,16 @@
+import type { ChatApi } from './notebook-api.js';
+
 export interface Project {
   readonly id: string;
   readonly root: string;
   readonly name: string;
 }
 
-export interface DesktopApi {
+export interface DesktopApi extends ChatApi {
   listProjects(): Promise<readonly Project[]>;
   chooseProject(): Promise<Project | null>;
+  projectAvailable(projectId: string): Promise<boolean>;
+  locateProject(projectId: string): Promise<Project | null>;
   listDirectory(
     projectId: string,
     path: string,
