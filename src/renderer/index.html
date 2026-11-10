@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>ResOS</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="renderer.js"></script>
+  </head>
+  <body>
+    <aside aria-labelledby="projects-heading">
+      <div class="app-name">ResOS</div>
+      <h2 id="projects-heading">Projects</h2>
+      <button id="add-project" type="button" disabled>Add Project</button>
+      <ul id="projects" aria-label="Saved projects"></ul>
+    </aside>
+    <main>
+      <header>
+        <h1 id="project-title">Choose a project</h1>
+        <p id="project-root">Add a folder to start a project.</p>
+      </header>
+      <p id="project-error" role="alert" hidden></p>
+    </main>
+  </body>
+</html>

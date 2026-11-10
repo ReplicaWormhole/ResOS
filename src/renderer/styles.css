@@ -1,0 +1,95 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  color: #1f2927;
+  background: #f7f9f8;
+  --rail: #edf2ef;
+  --border: #c9d5cf;
+  --active: #d6e9df;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #ebf2ee;
+    background: #1b2220;
+    --rail: #212a26;
+    --border: #43534b;
+    --active: #314a3f;
+  }
+}
+
+body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+  margin: 0;
+}
+
+aside {
+  background: var(--rail);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+}
+
+.app-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 30px;
+}
+
+h2 {
+  font-size: 0.9rem;
+  margin: 0 0 10px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  padding: 8px 10px;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+button:hover:enabled,
+button[aria-current='true'] {
+  background: var(--active);
+}
+
+ul {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+li + li {
+  margin-top: 6px;
+}
+
+main {
+  min-width: 0;
+  padding: 32px;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: 1.65rem;
+  margin: 0;
+}
+
+p {
+  margin: 8px 0;
+}
+
+[role='alert'] {
+  margin-top: 24px;
+}

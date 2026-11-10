@@ -1,0 +1,5 @@
+dist/
+release/
+package-lock.json
+docs/SPEC.md
+docs/ROADMAP.md

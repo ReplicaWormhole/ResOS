@@ -1,0 +1,37 @@
+name: Desktop CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install Linux packaging and display tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils fakeroot xvfb
+      - run: npm ci
+      - run: npm run check
+      - run: npm run package:linux
+      - name: Verify the packaged executable
+        run: |
+          sudo apt-get install -y ./release/resos_*_amd64.deb
+          desktop-file-validate /usr/share/applications/resos.desktop
+          RESOS_EXECUTABLE=/opt/ResOS/resos xvfb-run -a npm run test:desktop
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: resos-linux-x64
+          path: release/*.deb
+          if-no-files-found: error
