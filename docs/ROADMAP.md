@@ -6,6 +6,9 @@ record. The v1 desktop milestones are complete locally. See
 [verification](VERIFICATION.md) for M01 through M07 and the hosted release
 workflow status.
 
+The [v2 draft plan](V2-PLAN.md) covers the next workspace, selection, and
+coding harness milestones.
+
 ```mermaid
 flowchart TD
     M00["M00 · Spec and behavioral baseline"]
