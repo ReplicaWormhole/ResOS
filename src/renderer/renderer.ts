@@ -12,7 +12,7 @@ declare global {
 const addButton = document.querySelector<HTMLButtonElement>('#add-project')!;
 const list = document.querySelector<HTMLUListElement>('#projects')!;
 const title = document.querySelector('#project-title')!;
-const root = document.querySelector('#project-root')!;
+const root = document.querySelector<HTMLElement>('#project-root')!;
 const errorMessage = document.querySelector<HTMLElement>('#project-error')!;
 
 let projects: readonly Project[] = [];
@@ -21,16 +21,28 @@ let available: boolean | undefined;
 let availabilityRequest = 0;
 const workspace = document.querySelector<HTMLElement>('#workspace')!;
 const files = document.querySelector<HTMLElement>('#files')!;
+const chats = document.querySelector<HTMLElement>('#chats')!;
+const views = document.querySelector<HTMLElement>('#workspace-views')!;
+type View = 'chat' | 'editor' | 'split';
+const projectViews = new Map<string, View>();
+const sidebarState = new Map<string, boolean>();
+const viewButtons = views.querySelectorAll('button');
 const editor = new WorkspaceEditor(window.resos);
-const chat = new ChatPane(window.resos, {
-  canJump: (excerpt) => editor.canJump(excerpt),
-  jump: async (excerpt) => {
-    if (!selected || selected.id !== excerpt.projectId || !available)
-      return false;
-    expandPane('');
-    return editor.jump(selected, excerpt);
+const chat = new ChatPane(
+  window.resos,
+  {
+    canJump: (excerpt) => editor.canJump(excerpt),
+    jump: async (excerpt) => {
+      if (!selected || selected.id !== excerpt.projectId || !available)
+        return false;
+      setView('split');
+      return editor.jump(selected, excerpt);
+    },
   },
-});
+  () => {
+    if (workspace.dataset.view === 'editor') setView('chat');
+  },
+);
 editor.onBufferChange(() => void chat.refreshExcerptLinks(true));
 document
   .querySelector('#ask-file-selection')!
@@ -38,7 +50,7 @@ document
     try {
       const excerpt = await editor.captureSelection();
       if (selected?.id !== excerpt.projectId) return;
-      expandPane('');
+      setView('split');
       await chat.attachExcerpt(excerpt);
     } catch (error) {
       showError(error);
@@ -50,7 +62,8 @@ const tree = new FileTree(
   document.querySelector<HTMLElement>('#file-tree')!,
   window.resos,
   (project, path) => {
-    if (workspace.dataset.expanded === 'chat') expandPane('');
+    if (selected?.id !== project.id || !available) return;
+    if (workspace.dataset.view === 'chat') setView('editor');
     void editor.open(project, path);
   },
 );
@@ -58,40 +71,85 @@ document
   .querySelector('#refresh-files')!
   .addEventListener('click', () => tree.refresh());
 
-const paneButtons = ['editor', 'chat'].map((pane) => ({
-  pane,
-  button: document.querySelector<HTMLButtonElement>('#expand-' + pane)!,
-}));
-
-function expandPane(selected: string): void {
-  workspace.dataset.expanded = selected;
-  for (const { pane, button } of paneButtons) {
-    const expanded = selected === pane;
-    button.setAttribute('aria-pressed', String(expanded));
-    button.textContent = expanded ? 'Restore split view' : 'Expand ' + pane;
+function renderView(): void {
+  const view =
+    available && selected ? (projectViews.get(selected.id) ?? 'chat') : 'chat';
+  if (workspace.dataset.view !== view)
+    chat.preserveScroll(() => {
+      workspace.dataset.view = view;
+    });
+  for (const button of viewButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.view === view));
+    button.disabled = !available && button.dataset.view !== 'chat';
   }
 }
 
-for (const { pane, button } of paneButtons) {
-  button.addEventListener('click', () =>
-    expandPane(workspace.dataset.expanded === pane ? '' : pane),
-  );
+function setView(view: View): void {
+  if (selected && (available || view === 'chat'))
+    projectViews.set(selected.id, view);
+  renderView();
 }
+
+for (const button of viewButtons) {
+  button.addEventListener('click', () => setView(button.dataset.view as View));
+}
+
+const disclosures = [files, chats].map((section) => {
+  const button = section.querySelector<HTMLButtonElement>('.disclosure')!;
+  const content = document.getElementById(
+    button.getAttribute('aria-controls')!,
+  )!;
+  const show = (open: boolean) => {
+    button.setAttribute('aria-expanded', String(open));
+    content.hidden = !open;
+  };
+  const storageKey = (projectId: string) =>
+    'resos:sidebar:' + projectId + ':' + section.id;
+  button.addEventListener('click', () => {
+    if (!selected) return;
+    const open = Boolean(content.hidden);
+    const key = storageKey(selected.id);
+    sidebarState.set(key, open);
+    try {
+      localStorage.setItem(key, String(open));
+    } catch {
+      // The preference still applies for this session.
+    }
+    show(open);
+  });
+  return (projectId: string) => {
+    const key = storageKey(projectId);
+    let open = sidebarState.get(key);
+    if (open === undefined) {
+      try {
+        open = localStorage.getItem(key) !== 'false';
+      } catch {
+        open = true;
+      }
+    }
+    show(open);
+  };
+});
 
 function selectProject(project: Project): void {
   const changed = selected !== project;
   selected = project;
   title.textContent = project.name;
   root.textContent = project.root;
+  root.title = project.root;
   workspace.hidden = false;
+  views.hidden = false;
+  chats.hidden = false;
   if (changed) {
     available = undefined;
+    for (const restore of disclosures) restore(project.id);
     files.hidden = true;
     missing.hidden = true;
     editor.hide();
     chat.show(project.id, project.root);
     chat.setAvailable(false);
     workspace.dataset.available = 'checking';
+    renderView();
   }
   void refreshAvailability();
   for (const button of list.querySelectorAll('button')) {
@@ -123,10 +181,8 @@ async function refreshAvailability(): Promise<void> {
     if (exists) {
       tree.show(project);
       editor.show(project);
-    } else {
-      editor.hide();
-      if (workspace.dataset.expanded === 'editor') expandPane('');
-    }
+    } else editor.hide();
+    renderView();
   } catch (error) {
     if (selected === project && request === availabilityRequest)
       showError(error);

@@ -19,8 +19,7 @@ import { renderRichText } from './rich-text.js';
 const noExcerpts: FileExcerpt[] = [];
 
 export class ChatPane {
-  private readonly selector =
-    document.querySelector<HTMLSelectElement>('#chat-list')!;
+  private readonly chatList = document.querySelector('#chat-list')!;
   private readonly transcript =
     document.querySelector<HTMLElement>('#chat-transcript')!;
   private readonly input =
@@ -69,6 +68,7 @@ export class ChatPane {
       canJump(excerpt: FileExcerpt): Promise<boolean>;
       jump(excerpt: FileExcerpt): Promise<boolean>;
     },
+    private readonly reveal: () => void,
   ) {
     window.setInterval(() => void this.refreshExcerptLinks(), 1500);
     void api
@@ -83,10 +83,6 @@ export class ChatPane {
       .catch((error: unknown) => this.showError(error));
     this.search.addEventListener('input', () => this.renderSearch());
     this.newButton.addEventListener('click', () => void this.create());
-    this.selector.addEventListener('change', () => {
-      if (!this.projectId) return;
-      this.navigate(this.selector.value);
-    });
     this.input.addEventListener('input', () => {
       if (this.current) this.drafts.set(this.current.id, this.input.value);
       this.renderComposer();
@@ -235,7 +231,18 @@ export class ChatPane {
 
   private rememberScroll(): void {
     const chat = this.current;
-    if (chat) this.scrollPositions.set(chat.id, this.transcript.scrollTop);
+    if (chat && this.transcript.clientHeight)
+      this.scrollPositions.set(chat.id, this.transcript.scrollTop);
+  }
+
+  preserveScroll(updateLayout: () => void): void {
+    this.rememberScroll();
+    updateLayout();
+    if (this.current && this.transcript.clientHeight) {
+      this.transcript.scrollTop =
+        this.scrollPositions.get(this.current.id) ??
+        this.transcript.scrollHeight;
+    }
   }
 
   private navigate(chatId: string): void {
@@ -262,26 +269,35 @@ export class ChatPane {
   private render(switched: boolean): void {
     const chat = this.current;
     const mainChats = this.chats.filter((conversation) => !conversation.source);
-    const options = [...this.selector.options];
+    const buttons = this.chatList.querySelectorAll('button');
     if (
-      options.length !== mainChats.length ||
+      buttons.length !== mainChats.length ||
       mainChats.some(
         (item, index) =>
-          options[index]?.value !== item.id ||
-          options[index]?.textContent !== item.title,
+          buttons[index]?.dataset.chatId !== item.id ||
+          buttons[index]?.textContent !== item.title,
       )
     ) {
-      this.selector.replaceChildren(
+      this.chatList.replaceChildren(
         ...mainChats.map((conversation) => {
-          const option = document.createElement('option');
-          option.value = conversation.id;
-          option.textContent = conversation.title;
-          return option;
+          const item = document.createElement('li');
+          const button = this.action(conversation.title, async () => {
+            this.reveal();
+            this.navigate(conversation.id);
+          });
+          button.dataset.chatId = conversation.id;
+          button.title = conversation.title;
+          item.append(button);
+          return item;
         }),
       );
     }
-    this.selector.disabled = !mainChats.length;
-    if (chat) this.selector.value = this.mainChat(chat).id;
+    const mainId = chat && this.mainChat(chat).id;
+    for (const button of this.chatList.querySelectorAll('button')) {
+      if (button.dataset.chatId === mainId)
+        button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    }
 
     const previousScroll = this.transcript.scrollTop;
     const atEnd =
@@ -461,8 +477,8 @@ export class ChatPane {
               ' · ' +
               text.slice(Math.max(0, index - 24), index + 65),
             async () => {
-              this.activeChat.set(id, chat.id);
-              this.render(true);
+              this.reveal();
+              this.navigate(chat.id);
             },
           ),
         );
@@ -533,6 +549,7 @@ export class ChatPane {
     const article = document.createElement('article');
     article.dataset.messageId = message.id;
     article.dataset.revisionId = current.id;
+    article.dataset.role = 'question' in message ? 'user' : 'assistant';
     const heading = document.createElement('strong');
     heading.textContent = author;
     article.append(heading, rich.root);
@@ -711,7 +728,10 @@ export class ChatPane {
       this.activeChat.set(id, chat.id);
       if (this.projectId === id) {
         await this.refresh(id);
-        if (this.projectId === id) this.input.focus();
+        if (this.projectId === id) {
+          this.reveal();
+          this.input.focus();
+        }
       }
     } catch (error) {
       if (this.projectId === id) this.showError(error);

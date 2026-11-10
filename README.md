@@ -18,6 +18,17 @@ they are. The project list is saved under Electron's user-data directory as
 `projects.json`. On Linux that directory defaults to `~/.config/ResOS`.
 The editor and saved notebook are available without a live Codex connection.
 
+## Workspace layout
+
+Chat opens in the main workspace by default. The left sidebar has separate
+**Files** and **Chats** sections that you can collapse independently. Their
+open state is saved for each project. Start or switch chats and search the
+project's saved conversations under **Chats**.
+
+Opening a file from Chat view shows the editor. Use **Chat**, **Editor**, or
+**Split view** above the workspace to choose what is visible. Changing views
+keeps open tabs, edits, chat drafts, and reading position.
+
 ## Workspace editor
 
 Open a file from the project tree. The editor highlights TeX, Markdown, and
@@ -70,8 +81,8 @@ is saved beside the registry in the app data directory as `notebook.json`.
 Select a passage in a saved message and choose **Ask about selection**. The
 discussion keeps the original source range and revision. Select any part of
 rendered math to quote the complete TeX expression. Use **Back to parent** to
-return to the draft and reading position you left. Main conversations remain
-in the dropdown, and follow-ups open from their source messages.
+return to the draft and reading position you left. The main conversation stays
+selected in the sidebar, and follow-ups open from their source messages.
 
 **Edit message** creates a revision and leaves existing replies and links
 intact. **Add note** records a separate note on that revision. **Revision

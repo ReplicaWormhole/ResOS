@@ -18,12 +18,43 @@
       <h2 id="projects-heading">Projects</h2>
       <button id="add-project" type="button" disabled>Add Project</button>
       <ul id="projects" aria-label="Saved projects"></ul>
-      <section id="files" aria-labelledby="files-heading" hidden>
-        <div class="section-heading">
-          <h2 id="files-heading">Files</h2>
+      <section class="sidebar-section" id="files" hidden>
+        <h2>
+          <button
+            class="disclosure"
+            type="button"
+            aria-controls="files-content"
+            aria-expanded="true"
+          >
+            Files
+          </button>
+        </h2>
+        <div id="files-content">
           <button id="refresh-files" type="button">Refresh tree</button>
+          <div id="file-tree"></div>
         </div>
-        <div id="file-tree"></div>
+      </section>
+      <section class="sidebar-section" id="chats" hidden>
+        <h2>
+          <button
+            class="disclosure"
+            type="button"
+            aria-controls="chats-content"
+            aria-expanded="true"
+          >
+            Chats
+          </button>
+        </h2>
+        <div id="chats-content">
+          <button id="new-chat" type="button">New chat</button>
+          <ul id="chat-list" aria-label="Conversations"></ul>
+          <details class="chat-context">
+            <summary>Search project chats</summary>
+            <label for="chat-search">Search saved context</label>
+            <input id="chat-search" type="search" />
+            <ul id="chat-search-results"></ul>
+          </details>
+        </div>
       </section>
     </aside>
     <main>
@@ -38,14 +69,17 @@
         </div>
       </header>
       <p id="project-error" role="alert" hidden></p>
-      <div id="workspace" hidden>
+      <div id="workspace-views" role="group" aria-label="Workspace view" hidden>
+        <button type="button" data-view="chat" aria-pressed="true">Chat</button>
+        <button type="button" data-view="editor" aria-pressed="false">
+          Editor
+        </button>
+        <button type="button" data-view="split" aria-pressed="false">
+          Split view
+        </button>
+      </div>
+      <div id="workspace" data-view="chat" hidden>
         <section id="editor-pane" aria-label="Workspace editor">
-          <div class="pane-heading">
-            <h2>Editor</h2>
-            <button id="expand-editor" type="button" aria-pressed="false">
-              Expand editor
-            </button>
-          </div>
           <div id="file-tabs" role="tablist" aria-label="Open files"></div>
           <p id="editor-empty">Open a text file from the project tree.</p>
           <div id="editor-document" role="tabpanel" hidden>
@@ -64,24 +98,7 @@
           <p id="editor-error" role="alert" hidden></p>
         </section>
         <section id="chat-pane" aria-label="Chat">
-          <div class="pane-heading">
-            <h2>Chat</h2>
-            <button id="expand-chat" type="button" aria-pressed="false">
-              Expand chat
-            </button>
-          </div>
           <p id="chat-runtime" class="chat-demo"></p>
-          <div class="chat-toolbar">
-            <label for="chat-list">Conversations</label>
-            <select id="chat-list"></select>
-            <button id="new-chat" type="button">New chat</button>
-          </div>
-          <details class="chat-context">
-            <summary>Search project chats</summary>
-            <label for="chat-search">Search saved context</label>
-            <input id="chat-search" type="search" />
-            <ul id="chat-search-results"></ul>
-          </details>
           <div id="chat-approvals"></div>
           <div
             id="chat-transcript"

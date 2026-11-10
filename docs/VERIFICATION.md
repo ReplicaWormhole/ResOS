@@ -160,3 +160,18 @@ every jump validates the range again before selecting it.
 - `actionlint` 1.7.10 passed both workflows. The manual release workflow
   has not run on GitHub. It needs to be present on the repository's default
   branch, currently the legacy `master`, before it can be dispatched.
+
+## V2-01 · Chat-first workspace
+
+- `npm run check` passed all 16 unit tests.
+- `npm run package:linux` built a scratch package with the checksum-verified
+  Electron 45.2.3 cache. `desktop-file-validate` passed, and all six
+  `npm run test:desktop` tests passed against the extracted executable
+  under Xvfb with the host Wayland display variables unset.
+- The workspace tests cover keyboard disclosure, independent section state
+  across project switches and restart, draft and reading-position retention,
+  file conflicts, and a usable transcript at the 640 × 420 minimum size.
+  The visual check at the minimum size led to a narrower sidebar and shorter
+  composer. Runs that inherited the host Wayland display intermittently
+  entered different text from the test fixtures. The isolated Xvfb run
+  passed with the same executable and fixtures.

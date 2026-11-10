@@ -155,6 +155,26 @@ test(
       }
 
       await addProject(alpha);
+      const files = window.getByRole('button', { name: 'Files', exact: true });
+      const chats = window.getByRole('button', { name: 'Chats', exact: true });
+      const editor = window.getByRole('region', { name: 'Workspace editor' });
+      const chat = window.getByRole('region', { name: 'Chat' });
+      const view = (name) =>
+        window
+          .getByRole('group', { name: 'Workspace view' })
+          .getByRole('button', {
+            name,
+            exact: true,
+          });
+      await chat.waitFor();
+      await editor.waitFor({ state: 'hidden' });
+      await files.press('Enter');
+      await window.locator('#files-content').waitFor({ state: 'hidden' });
+      await window.locator('#chats-content').waitFor();
+      await chats.click();
+      await window.locator('#chats-content').waitFor({ state: 'hidden' });
+      await files.click();
+      await window.locator('#files-content').waitFor();
       await window
         .locator('summary')
         .getByText('notes', { exact: true })
@@ -184,6 +204,13 @@ test(
       );
       await contents.press('Control+End');
       await contents.pressSequentially('TeX draft', { delay: 12 });
+      await view('Split view').click();
+      await chat.waitFor();
+      await view('Chat').click();
+      await editor.waitFor({ state: 'hidden' });
+      await view('Editor').click();
+      await contents.waitFor();
+      assert.match(await contents.innerText(), /TeX draft/);
 
       await window
         .getByRole('button', { name: 'readme.md', exact: true })
@@ -213,6 +240,7 @@ test(
       await search.press('Escape');
 
       await addProject(beta);
+      await window.locator('#chats-content').waitFor();
       await window.getByRole('button', { name: 'script.py' }).click();
       await contents.locator('span').filter({ hasText: /^def$/ }).waitFor();
       await contents.press('Control+End');
@@ -225,7 +253,8 @@ test(
       );
 
       await window.getByRole('button', { name: 'Alpha', exact: true }).click();
-      assert.match(await contents.innerText(), /TeX draft/);
+      await window.locator('#chats-content').waitFor({ state: 'hidden' });
+      await contents.getByText('TeX draft', { exact: true }).waitFor();
       await mdTab.click();
       assert.deepEqual(await contents.locator('.cm-line').allTextContents(), [
         '# Initial heading',
@@ -277,16 +306,21 @@ test(
       await window.getByText(/Reloaded from disk/).waitFor();
       assert.match(await contents.innerText(), /External dirty edit/);
 
-      const chat = window.getByRole('region', { name: 'Chat' });
-      const editor = window.getByRole('region', { name: 'Workspace editor' });
-      await window.getByRole('button', { name: 'Expand editor' }).click();
+      await view('Editor').click();
       await chat.waitFor({ state: 'hidden' });
-      await window.getByRole('button', { name: 'Restore split view' }).click();
+      await view('Split view').click();
       await chat.waitFor();
-      await window.getByRole('button', { name: 'Expand chat' }).click();
+      await view('Chat').click();
       await editor.waitFor({ state: 'hidden' });
-      await window.getByRole('button', { name: 'Restore split view' }).click();
+      await view('Split view').click();
       await editor.waitFor();
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setSize(640, 420),
+      );
+      await window.waitForFunction(() => window.innerWidth <= 640);
+      assert.ok(
+        (await window.locator('#chat-transcript').boundingBox()).height >= 70,
+      );
       assert.deepEqual(errors, []);
     } finally {
       await app.close();
@@ -337,7 +371,10 @@ test(
       const transcript = window.locator('#chat-transcript');
       const send = window.getByRole('button', { name: 'Send', exact: true });
       const newChat = window.getByRole('button', { name: 'New chat' });
-      const selector = window.getByLabel('Conversations');
+      const chatList = window.getByRole('list', { name: 'Conversations' });
+      const activeChat = chatList.locator('[aria-current=true]');
+      const chooseChat = (id) =>
+        chatList.locator('[data-chat-id="' + id + '"]').click();
 
       await choose('Add Project', alpha);
       await choose('Add Project', beta);
@@ -358,19 +395,19 @@ test(
       await project('Alpha').click();
       await transcript.locator('[data-status=complete]').waitFor();
       assert.match(await transcript.innerText(), /Alpha question/);
-      const originalChatId = await selector.inputValue();
+      const originalChatId = await activeChat.getAttribute('data-chat-id');
       await newChat.click();
       await transcript
         .getByText('Send a message to start this conversation.')
         .waitFor();
       await composer.fill('Draft on a different chat');
-      const draftId = await selector.inputValue();
+      const draftId = await activeChat.getAttribute('data-chat-id');
       assert.notEqual(draftId, originalChatId);
-      await selector.selectOption(originalChatId);
+      await chooseChat(originalChatId);
       assert.equal(await composer.inputValue(), '');
-      await selector.selectOption(draftId);
+      await chooseChat(draftId);
       assert.equal(await composer.inputValue(), 'Draft on a different chat');
-      await selector.selectOption(originalChatId);
+      await chooseChat(originalChatId);
 
       const original = (
         await window.evaluate(() => window.resos.listProjects())
@@ -406,6 +443,7 @@ test(
           .innerText(),
         'original project',
       );
+      await chooseChat(originalChatId);
       await send.click();
       await transcript.locator('[data-status=complete]').nth(1).waitFor();
       const projects = await window.evaluate(() => window.resos.listProjects());
@@ -419,6 +457,8 @@ test(
         [alpha, moved],
       );
       assert.equal(history[0].id, originalChatId);
+      await project('Files').click();
+      await window.locator('#files-content').waitFor({ state: 'hidden' });
     } finally {
       await app.close();
     }
@@ -429,7 +469,10 @@ test(
       await transcript.getByText('After relinking', { exact: true }).waitFor();
       assert.match(await transcript.innerText(), /Alpha question/);
       assert.equal(await window.locator('#project-root').textContent(), moved);
+      await window.locator('#files-content').waitFor({ state: 'hidden' });
+      await window.locator('#chats-content').waitFor();
       await window.getByRole('button', { name: 'Beta', exact: true }).click();
+      await window.locator('#files-content').waitFor();
       await transcript.getByText('Beta question', { exact: true }).waitFor();
       assert.doesNotMatch(await transcript.innerText(), /Alpha question/);
     } finally {
@@ -493,6 +536,20 @@ test(
       );
 
       await composer.fill('Parent draft');
+      const readingPosition = await transcript.evaluate((node) => {
+        node.scrollTop = 70;
+        return node.scrollTop;
+      });
+      assert.ok(Math.abs(readingPosition - 70) < 1);
+      const views = window.getByRole('group', { name: 'Workspace view' });
+      await views.getByRole('button', { name: 'Editor', exact: true }).click();
+      await transcript.waitFor({ state: 'hidden' });
+      await views.getByRole('button', { name: 'Chat', exact: true }).click();
+      assert.equal(await composer.inputValue(), 'Parent draft');
+      assert.equal(
+        await transcript.evaluate((node) => node.scrollTop),
+        readingPosition,
+      );
       await question
         .getByText('same phrase, same phrase.', { exact: true })
         .evaluate((node) => {
@@ -505,10 +562,6 @@ test(
           selection.removeAllRanges();
           selection.addRange(range);
         });
-      const readingPosition = await transcript.evaluate((node) => {
-        node.scrollTop = 70;
-        return node.scrollTop;
-      });
       await question
         .getByRole('button', { name: 'Ask about selection' })
         .evaluate((node) => node.click());
@@ -518,7 +571,10 @@ test(
         /same phrase/,
       );
       assert.equal(
-        await window.getByLabel('Conversations').locator('option').count(),
+        await window
+          .getByRole('list', { name: 'Conversations' })
+          .getByRole('button')
+          .count(),
         1,
       );
 
