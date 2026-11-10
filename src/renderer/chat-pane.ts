@@ -10,6 +10,7 @@ import type {
   ChatJob,
   ChatTurn,
   Conversation,
+  ContextPreview,
   FileExcerpt,
   FileNote,
   FileSource,
@@ -31,6 +32,11 @@ export class ChatPane {
     document.querySelector<HTMLTextAreaElement>('#chat-input')!;
   private readonly sendButton =
     document.querySelector<HTMLButtonElement>('#chat-send')!;
+  private readonly previewButton =
+    document.querySelector<HTMLButtonElement>('#preview-context')!;
+  private readonly lookup =
+    document.querySelector<HTMLInputElement>('#notebook-lookup')!;
+  private readonly lookupDrafts = new Set<string>();
   private readonly newButton =
     document.querySelector<HTMLButtonElement>('#new-chat')!;
   private readonly status =
@@ -94,6 +100,7 @@ export class ChatPane {
       question: string;
       excerpts: FileExcerpt[];
       passages: Passage[];
+      lookupEnabled: boolean;
       id: string;
     }
   >();
@@ -153,6 +160,23 @@ export class ChatPane {
         else fileSide.collapse();
       }
     });
+    void api
+      .supportsNotebookLookup()
+      .then((supported) => {
+        document.querySelector<HTMLElement>(
+          '#notebook-lookup-setting',
+        )!.hidden = !supported;
+      })
+      .catch((error: unknown) => this.showError(error));
+    this.lookup.addEventListener('change', () => {
+      if (!this.current) return;
+      if (this.lookup.checked) this.lookupDrafts.add(this.current.id);
+      else this.lookupDrafts.delete(this.current.id);
+    });
+    this.previewButton.addEventListener(
+      'click',
+      () => void this.previewContext(),
+    );
     this.search.addEventListener('input', () => this.renderSearch());
     this.newButton.addEventListener('click', () => void this.create());
     this.input.addEventListener('input', () => {
@@ -687,11 +711,38 @@ export class ChatPane {
         passages: turn.passages,
         fileSource: chat.fileSource,
         context: job.context ?? [],
+        inputBudget: job.input && {
+          usedBytes: job.input.usedBytes,
+          limitBytes: job.input.limitBytes,
+          omitted: job.input.omitted,
+          lookupEnabled: job.input.lookupEnabled,
+        },
+        submittedAt: job.submittedAt,
       },
       null,
       2,
     );
     record.append(label, data);
+    if (job.input) {
+      record.append(
+        this.contextDetail(
+          job.submittedAt ? 'Submitted input' : 'Prepared input',
+          job.input.initialText,
+        ),
+      );
+      if (job.input.lookupEnabled)
+        record.append(
+          this.contextDetail(
+            'Notebook lookup results',
+            JSON.stringify(job.lookups ?? [], null, 2),
+          ),
+        );
+    } else {
+      const legacy = document.createElement('p');
+      legacy.textContent =
+        'This older run has a context snapshot without an exact submitted input record.';
+      record.append(legacy);
+    }
     (answer.querySelector('.message-actions') ?? answer).append(record);
     return answer;
   }
@@ -1027,6 +1078,7 @@ export class ChatPane {
   } {
     const dialog = document.createElement('dialog');
     dialog.className = 'message-dialog';
+    dialog.setAttribute('aria-label', title);
     const heading = document.createElement('h2');
     heading.textContent = title;
     const close = document.createElement('button');
@@ -1121,6 +1173,86 @@ export class ChatPane {
     return article;
   }
 
+  private contextDetail(label: string, text: string): HTMLDetailsElement {
+    const detail = document.createElement('details');
+    const heading = document.createElement('summary');
+    heading.textContent = label;
+    const body = document.createElement('pre');
+    body.textContent = text;
+    detail.append(heading, body);
+    return detail;
+  }
+
+  private async previewContext(): Promise<void> {
+    const projectId = this.projectId;
+    const chat = this.current;
+    if (!projectId || !chat || this.previewButton.disabled) return;
+    const question = this.input.value;
+    const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
+    const passages = this.draftPassages.get(chat.id) ?? noPassages;
+    const lookupEnabled = this.lookupDrafts.has(chat.id);
+    const { dialog, close } = this.dialog('Context preview');
+    const info = document.createElement('p');
+    info.setAttribute('role', 'status');
+    info.textContent = 'Preparing context…';
+    dialog.append(info, close);
+    dialog.showModal();
+    try {
+      const preview = await this.api.previewContext(
+        projectId,
+        chat.id,
+        question,
+        excerpts,
+        passages,
+        { lookupEnabled },
+      );
+      if (!dialog.open) return;
+      this.showContextPreview(dialog, info, preview);
+      const send = this.action('Send reviewed input', async () => {
+        if (this.projectId !== projectId || this.current?.id !== chat.id)
+          throw new Error('The selected chat changed. Open a new preview.');
+        dialog.close();
+        await this.send(preview.previewId);
+      });
+      dialog.append(send);
+    } catch (error) {
+      info.textContent = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private showContextPreview(
+    dialog: HTMLDialogElement,
+    info: HTMLElement,
+    preview: ContextPreview,
+  ): void {
+    info.textContent =
+      preview.usedBytes.toLocaleString() +
+      ' of ' +
+      preview.limitBytes.toLocaleString() +
+      ' bytes · ' +
+      preview.context.length +
+      ' history entries · ' +
+      preview.omitted.length +
+      ' entries with omitted text.';
+    const details = document.createElement('p');
+    details.textContent =
+      'Working directory: ' +
+      preview.cwd +
+      (preview.lookupEnabled
+        ? ' · Notebook lookup enabled'
+        : ' · Notebook lookup off');
+    const input = this.contextDetail('Initial input', preview.initialText);
+    input.open = true;
+    dialog.append(details, input);
+    if (preview.omitted.length)
+      dialog.append(
+        this.contextDetail(
+          'Omitted turns and revisions',
+          JSON.stringify(preview.omitted, null, 2),
+        ),
+      );
+  }
+
   private renderComposer(): void {
     const id = this.projectId;
     const busy = this.chats.some((chat) =>
@@ -1136,6 +1268,13 @@ export class ChatPane {
       !this.available ||
       Boolean(id && this.submitting.has(id)) ||
       !this.input.value.trim();
+    this.previewButton.disabled = this.sendButton.disabled;
+    this.lookup.disabled =
+      !this.current ||
+      !this.available ||
+      Boolean(id && this.submitting.has(id));
+    this.lookup.checked =
+      !!this.current && this.lookupDrafts.has(this.current.id);
     this.status.textContent = !this.available
       ? 'Locate the project folder to send messages.'
       : busy
@@ -1166,7 +1305,7 @@ export class ChatPane {
     }
   }
 
-  private async send(): Promise<void> {
+  private async send(previewId?: string): Promise<void> {
     const id = this.projectId;
     const chat = this.current;
     const question = this.input.value;
@@ -1178,12 +1317,20 @@ export class ChatPane {
       let request = this.requestIds.get(chat.id);
       const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
       const passages = this.draftPassages.get(chat.id) ?? noPassages;
+      const lookupEnabled = this.lookupDrafts.has(chat.id);
       if (
         request?.question !== question ||
         request?.excerpts !== excerpts ||
-        request?.passages !== passages
+        request?.passages !== passages ||
+        request?.lookupEnabled !== lookupEnabled
       ) {
-        request = { question, excerpts, passages, id: crypto.randomUUID() };
+        request = {
+          question,
+          excerpts,
+          passages,
+          lookupEnabled,
+          id: crypto.randomUUID(),
+        };
         this.requestIds.set(chat.id, request);
       }
       await this.api.sendChat(
@@ -1193,8 +1340,10 @@ export class ChatPane {
         request.id,
         excerpts,
         passages,
+        { lookupEnabled, previewId },
       );
       this.requestIds.delete(chat.id);
+      this.lookupDrafts.delete(chat.id);
       if (this.draftExcerpts.get(chat.id) === excerpts)
         this.draftExcerpts.delete(chat.id);
       if (this.draftPassages.get(chat.id) === passages)

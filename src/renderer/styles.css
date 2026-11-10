@@ -498,6 +498,16 @@ p {
   #chat-composer textarea {
     height: 2.25em;
   }
+
+  #chat-composer button {
+    font-size: 0.8rem;
+    padding-inline: 6px;
+  }
+
+  #chat-runtime,
+  #chat-status {
+    margin-block: 4px;
+  }
 }
 
 #selection-toolbar {
@@ -560,4 +570,15 @@ p {
   border-inline-start: 2px solid var(--border);
   padding-inline-start: 6px;
   font-size: 0.85rem;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.composer-actions #chat-send {
+  margin-inline-start: auto;
 }

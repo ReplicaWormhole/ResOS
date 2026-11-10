@@ -88,3 +88,26 @@ test('Codex transport interrupts the active turn and retains the already yielded
   controller.abort();
   await assert.rejects(stream.next(), { name: 'AbortError' });
 });
+
+test('Codex sends the exact prepared input and rejects notebook calls outside the active turn', async (t) => {
+  const { cwd, runtime } = await fixture(t);
+  const seen = [];
+  const request = {
+    cwd,
+    projectId: 'project',
+    conversationId: 'chat',
+    question: 'ignored input',
+    context: [],
+  };
+  for await (const chunk of runtime.stream(request, {
+    initialInput: 'saved lookup payload',
+    signal: globalThis.AbortSignal.timeout(5000),
+    approve: async () => false,
+    lookupNotebook: async (query) => {
+      seen.push(query);
+      return [{ excerpt: 'fixture result' }];
+    },
+  }))
+    assert.equal(chunk, 'partial ');
+  assert.deepEqual(seen, ['fixture']);
+});

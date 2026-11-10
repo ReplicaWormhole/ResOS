@@ -5,7 +5,7 @@ import {
   validFileExcerpts,
   validFileSource,
 } from '../shared/file-excerpt.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { contextBefore } from '../notebook/chat-context.js';
 import {
   addNote,
@@ -17,12 +17,20 @@ import {
   validAddress,
 } from '../notebook/discussions.js';
 import type { NotebookStore } from '../notebook/notebook-store.js';
+import {
+  MAX_LOOKUP_QUERY,
+  MAX_NOTEBOOK_LOOKUPS,
+  notebookMatches,
+} from '../notebook/lookup.js';
+import { prepareContext } from '../notebook/prepare-context.js';
 import type { ChatRequest, ChatRuntime } from '../runtime/chat-runtime.js';
 import type { Project } from '../shared/desktop-api.js';
 import type {
   ApprovalRequest,
   ChatJob,
   ChatTurn,
+  ContextOptions,
+  ContextPreview,
   MessageAddress,
   Passage,
   Conversation,
@@ -51,6 +59,55 @@ function nextQueueOrder(chats: Conversation[]): number {
       0,
     ) + 1
   );
+}
+
+function checkDraft(
+  projectId: string,
+  question: unknown,
+  excerpts: unknown,
+  passages: unknown,
+) {
+  if (
+    typeof question !== 'string' ||
+    !question.trim() ||
+    question.length > 12_000
+  )
+    throw new Error('Enter a question of at most 12,000 characters.');
+  if (
+    !validFileExcerpts(excerpts) ||
+    excerpts.some((excerpt) => excerpt.projectId !== projectId)
+  )
+    throw new Error('Invalid file excerpt for this project.');
+  if (!Array.isArray(passages) || passages.length > 5)
+    throw new Error('Attach up to five chat passages.');
+  return {
+    question,
+    excerpts: excerpts.map(copyFileExcerpt),
+    passages: passages as unknown[],
+  };
+}
+
+function resolveQuotes(
+  chats: Conversation[],
+  projectId: string,
+  passages: unknown[],
+): Passage[] {
+  return passages.map((passage) => {
+    if (!validAddress(passage)) throw new Error('Invalid passage address.');
+    return resolvePassage(
+      findChat(chats, projectId, passage.conversationId),
+      passage as Passage,
+    ).source;
+  });
+}
+
+function previewId(
+  cwd: string,
+  prepared: ReturnType<typeof prepareContext>,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify([cwd, prepared]))
+    .digest('hex');
 }
 
 export class ChatService {
@@ -178,6 +235,58 @@ export class ChatService {
     return this.active.has(projectId);
   }
 
+  supportsNotebookLookup(): boolean {
+    return this.runtime.supportsNotebookLookup === true;
+  }
+
+  private contextOptions(value: unknown): ContextOptions {
+    if (!value || typeof value !== 'object')
+      throw new Error('Invalid context settings.');
+    const options = value as ContextOptions;
+    if (
+      typeof options.lookupEnabled !== 'boolean' ||
+      (options.previewId !== undefined &&
+        (typeof options.previewId !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(options.previewId)))
+    )
+      throw new Error('Invalid context settings.');
+    if (options.lookupEnabled && !this.supportsNotebookLookup())
+      throw new Error('This harness does not support notebook lookup.');
+    return options;
+  }
+
+  async preview(
+    project: Project,
+    conversationId: string,
+    question: unknown,
+    excerpts: unknown,
+    passages: unknown,
+    rawOptions: unknown,
+  ): Promise<ContextPreview> {
+    const options = this.contextOptions(rawOptions);
+    const draft = checkDraft(project.id, question, excerpts, passages);
+    const chats = await this.notebook.list(project.id);
+    const chat = findChat(chats, project.id, conversationId);
+    const savedPassages = resolveQuotes(chats, project.id, draft.passages);
+    const prepared = prepareContext(
+      {
+        question: draft.question,
+        excerpts: draft.excerpts,
+        context: contextBefore(chat),
+        passages: savedPassages.length ? savedPassages : undefined,
+        fileSource: chat.fileSource,
+      },
+      options.lookupEnabled,
+      this.runtime.inputLimitBytes,
+    );
+    return {
+      ...prepared.input,
+      context: prepared.context,
+      cwd: project.root,
+      previewId: previewId(project.root, prepared),
+    };
+  }
+
   async send(
     project: Project,
     conversationId: string,
@@ -185,35 +294,16 @@ export class ChatService {
     requestId: string,
     excerpts: unknown = [],
     passages: unknown = [],
+    rawOptions: unknown = { lookupEnabled: false },
   ): Promise<void> {
-    if (
-      typeof question !== 'string' ||
-      !question.trim() ||
-      question.length > 12_000
-    ) {
-      throw new Error('Enter a question of at most 12,000 characters.');
-    }
-    if (typeof requestId !== 'string' || !requestId || requestId.length > 128) {
+    if (typeof requestId !== 'string' || !requestId || requestId.length > 128)
       throw new Error('Invalid request ID.');
-    }
-    if (
-      !validFileExcerpts(excerpts) ||
-      excerpts.some((excerpt) => excerpt.projectId !== project.id)
-    ) {
-      throw new Error('Invalid file excerpt for this project.');
-    }
-    if (!Array.isArray(passages) || passages.length > 5)
-      throw new Error('Attach up to five chat passages.');
-    const savedExcerpts = excerpts.map(copyFileExcerpt);
+    const options = this.contextOptions(rawOptions);
+    const draft = checkDraft(project.id, question, excerpts, passages);
+    const savedExcerpts = draft.excerpts;
     await this.notebook.change((chats) => {
       const chat = findChat(chats, project.id, conversationId);
-      const savedPassages = passages.map((passage: unknown) => {
-        if (!validAddress(passage)) throw new Error('Invalid passage address.');
-        return resolvePassage(
-          findChat(chats, project.id, passage.conversationId),
-          passage as Passage,
-        ).source;
-      });
+      const savedPassages = resolveQuotes(chats, project.id, draft.passages);
       const existing = chat.turns.find(
         (turn) => turn.jobs[0]?.requestId === requestId,
       );
@@ -221,13 +311,33 @@ export class ChatService {
         if (
           existing.question !== question ||
           !isDeepStrictEqual(existing.excerpts ?? [], savedExcerpts) ||
-          !isDeepStrictEqual(existing.passages ?? [], savedPassages)
+          !isDeepStrictEqual(existing.passages ?? [], savedPassages) ||
+          (existing.jobs[0]?.input?.lookupEnabled ?? false) !==
+            options.lookupEnabled
         )
           throw new Error(
             'This request ID was already used for different input.',
           );
         return;
       }
+      const prepared = prepareContext(
+        {
+          question,
+          context: contextBefore(chat),
+          excerpts: savedExcerpts,
+          passages: savedPassages.length ? savedPassages : undefined,
+          fileSource: chat.fileSource,
+        },
+        options.lookupEnabled,
+        this.runtime.inputLimitBytes,
+      );
+      if (
+        options.previewId &&
+        options.previewId !== previewId(project.root, prepared)
+      )
+        throw new Error(
+          'The input changed after the preview. Review the refreshed context and send again.',
+        );
       if (!chat.turns.length && !chat.source)
         chat.title = question.trim().split(/\s+/).join(' ').slice(0, 60);
       chat.turns.push({
@@ -244,7 +354,8 @@ export class ChatService {
             answer: '',
             requestId,
             queueOrder: nextQueueOrder(chats),
-            context: contextBefore(chat),
+            context: prepared.context,
+            input: prepared.input,
           },
         ],
       });
@@ -277,6 +388,24 @@ export class ChatService {
       if (project.root !== original.cwd && confirmRelink !== true) {
         throw new Error('Confirm the new project folder before retrying.');
       }
+      if (original.input?.lookupEnabled && !this.supportsNotebookLookup())
+        throw new Error(
+          'This harness no longer supports the saved notebook lookup setting.',
+        );
+      const savedContext = original.context ?? contextBefore(chat, index);
+      const prepared = original.input
+        ? { context: savedContext, input: original.input }
+        : prepareContext(
+            {
+              question: turn.question,
+              context: savedContext,
+              excerpts: turn.excerpts,
+              passages: turn.passages,
+              fileSource: chat.fileSource,
+            },
+            false,
+            this.runtime.inputLimitBytes,
+          );
       turn.jobs.push({
         id: randomUUID(),
         cwd: project.root,
@@ -285,7 +414,8 @@ export class ChatService {
         answer: '',
         retryOf: original.id,
         queueOrder: nextQueueOrder(chats),
-        context: original.context ?? contextBefore(chat, index),
+        context: prepared.context,
+        input: prepared.input,
       });
     });
     this.start(project.id);
@@ -430,14 +560,45 @@ export class ChatService {
       this.changed(projectId);
     };
     const { signal } = active.controller;
+    let lookupCount = 0;
     try {
       this.changed(projectId);
       for await (const chunk of this.runtime.stream(request, {
         signal,
+        initialInput: job.input?.initialText,
+        ...(job.input?.lookupEnabled && this.supportsNotebookLookup()
+          ? {
+              lookupNotebook: async (rawQuery: string) => {
+                signal.throwIfAborted();
+                const query = rawQuery.trim();
+                if (!query || query.length > MAX_LOOKUP_QUERY)
+                  throw new Error(
+                    'Enter a notebook query of at most 160 characters.',
+                  );
+                if (lookupCount >= MAX_NOTEBOOK_LOOKUPS)
+                  throw new Error(
+                    'This run reached its notebook lookup limit.',
+                  );
+                lookupCount++;
+                const matches = notebookMatches(
+                  await this.notebook.list(projectId),
+                  query,
+                  turn.id,
+                );
+                signal.throwIfAborted();
+                await update((entry) =>
+                  (entry.lookups ??= []).push({ query, matches }),
+                );
+                signal.throwIfAborted();
+                return matches;
+              },
+            }
+          : {}),
         identify: (threadId, turnId) =>
           update((entry) => {
             entry.threadId = threadId;
             entry.turnId = turnId;
+            if (job.input) entry.submittedAt = new Date().toISOString();
           }),
         approve: (detail, expires) => {
           if (signal.aborted || expires?.aborted) return Promise.resolve(false);

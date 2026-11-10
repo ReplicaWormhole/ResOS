@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -467,4 +468,232 @@ test('upgrades a v1 notebook and keeps annotations private while file and chat s
     excerpt,
   );
   assert.equal(JSON.parse(await readFile(path, 'utf8')).version, 2);
+});
+
+test('previews bounded input, rejects a stale review, and retries the same payload with scoped lookup', async (t) => {
+  const path = await fixture(t);
+  const store = new NotebookStore(path);
+  const project = { id: 'project', root: '/workspace', name: 'Project' };
+  const requests = [];
+  const service = new ChatService(
+    store,
+    {
+      supportsNotebookLookup: true,
+      inputLimitBytes: 2600,
+      async *stream(request, controls) {
+        requests.push({ request, input: controls.initialInput });
+        await controls.identify('thread-' + requests.length, 'turn');
+        if (requests.length === 1) {
+          for (let index = 0; index < 4; index++) {
+            const matches = await controls.lookupNotebook('scope-token');
+            assert.equal(matches.length, 1);
+            assert.equal(matches[0].revisionId, 'lookup-revision');
+            assert.equal(matches[0].author, 'user');
+            assert.match(matches[0].excerpt, /scope-token local/);
+          }
+          await assert.rejects(
+            controls.lookupNotebook('scope-token'),
+            /reached its notebook lookup limit/,
+          );
+          throw new Error('fixture retry');
+        }
+        yield 'retried';
+      },
+    },
+    () => {},
+    'codex',
+  );
+
+  const turn = (id, question, answer) => ({
+    id,
+    question,
+    jobs: [
+      { id: id + '-answer', cwd: project.root, answer, status: 'complete' },
+    ],
+  });
+  const pinned = 'pin-this';
+  const parent = {
+    id: 'parent',
+    projectId: project.id,
+    title: 'Parent',
+    turns: [turn('root', pinned + '😀'.repeat(4000), 'long parent answer')],
+  };
+  await store.change((chats) =>
+    chats.push(
+      parent,
+      {
+        id: 'lookups',
+        projectId: project.id,
+        title: 'Local lookup',
+        turns: [
+          {
+            ...turn('lookup', 'draft', 'done'),
+            revisions: [
+              {
+                id: 'lookup-revision',
+                text: 'scope-token local',
+                author: 'user',
+              },
+            ],
+            notes: [
+              {
+                id: 'note',
+                revisionId: 'lookup-revision',
+                text: 'private scope-token note',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'foreign',
+        projectId: 'other',
+        title: 'Foreign',
+        turns: [turn('foreign-turn', 'scope-token foreign', 'foreign answer')],
+      },
+    ),
+  );
+  const passage = {
+    conversationId: parent.id,
+    messageId: 'root',
+    revisionId: 'root',
+    start: 0,
+    end: pinned.length,
+    quote: pinned,
+  };
+  const discussion = await service.createDiscussion(project.id, passage);
+  const sibling = await service.createDiscussion(project.id, passage);
+  await store.change((chats) => {
+    chats
+      .find(({ id }) => id === sibling.id)
+      .turns.push(turn('sibling', 'sibling private', 'answer'));
+    const target = chats.find(({ id }) => id === discussion.id);
+    for (let index = 0; index < 12; index++)
+      target.turns.push(
+        turn('past-' + index, 'older ' + 'x'.repeat(1000), 'answer'),
+      );
+    target.turns.push(turn('recent', 'recent useful turn', 'recent answer'));
+  });
+
+  const quote = 'attached-source';
+  const excerpt = {
+    projectId: project.id,
+    path: 'source.tex',
+    text: quote,
+    start: 0,
+    end: quote.length,
+    startLine: 1,
+    endLine: 1,
+    capturedAt: '2026-11-10T12:00:00Z',
+    unsaved: true,
+    fingerprint: 'a'.repeat(64),
+  };
+  const options = { lookupEnabled: true };
+  const preview = () =>
+    service.preview(
+      project,
+      discussion.id,
+      'new question',
+      [excerpt],
+      [],
+      options,
+    );
+  const first = await preview();
+  assert.equal(first.usedBytes, Buffer.byteLength(first.initialText));
+  assert.ok(first.usedBytes <= first.limitBytes);
+  assert.match(first.initialText, /pin-this/);
+  assert.match(first.initialText, /attached-source/);
+  assert.match(first.initialText, /recent useful turn/);
+  assert.match(first.initialText, /new question/);
+  assert.doesNotMatch(
+    first.initialText,
+    /scope-token|foreign answer|sibling private|private scope-token note/,
+  );
+  assert.ok(
+    first.omitted.some(
+      ({ turnId, retainedQuote }) => turnId === 'root' && retainedQuote,
+    ),
+  );
+  assert.ok(
+    first.omitted.some(
+      ({ turnId, questionRevisionId }) =>
+        turnId === 'past-0' && questionRevisionId === 'past-0',
+    ),
+  );
+
+  await service.reviseMessage(
+    project.id,
+    {
+      conversationId: discussion.id,
+      messageId: 'recent',
+      revisionId: 'recent',
+    },
+    'recent edited turn',
+  );
+  await assert.rejects(
+    service.send(
+      project,
+      discussion.id,
+      'new question',
+      'request',
+      [excerpt],
+      [],
+      { ...options, previewId: first.previewId },
+    ),
+    /input changed after the preview/,
+  );
+  await assert.rejects(
+    service.send(
+      project,
+      discussion.id,
+      '😃'.repeat(1000),
+      'oversized',
+      [excerpt],
+      [],
+      options,
+    ),
+    /exceed the input limit/,
+  );
+  assert.equal(requests.length, 0);
+  const reviewed = await preview();
+  await service.send(
+    project,
+    discussion.id,
+    'new question',
+    'request',
+    [excerpt],
+    [],
+    { ...options, previewId: reviewed.previewId },
+  );
+  await until(() => !service.isRunning(project.id));
+  const original = (await service.list(project.id))
+    .find(({ id }) => id === discussion.id)
+    .turns.at(-1).jobs[0];
+  assert.equal(original.status, 'failed');
+  assert.equal(original.error, 'fixture retry');
+  assert.equal(original.lookups.length, 4);
+  assert.equal(original.input.initialText, reviewed.initialText);
+  assert.ok(original.submittedAt);
+  assert.equal(requests[0].input, reviewed.initialText);
+  await service.reviseMessage(
+    project.id,
+    {
+      conversationId: discussion.id,
+      messageId: 'recent',
+      revisionId: reviewed.context.find(({ turnId }) => turnId === 'recent')
+        .questionRevisionId,
+    },
+    'new revision after failure',
+  );
+  await service.retry(project, discussion.id, original.id, false);
+  await until(() => !service.isRunning(project.id));
+  const reopened = (await new NotebookStore(path).list(project.id)).find(
+    ({ id }) => id === discussion.id,
+  );
+  const retry = reopened.turns.at(-1).jobs[1];
+  assert.equal(retry.status, 'complete');
+  assert.deepEqual(retry.input, original.input);
+  assert.deepEqual(retry.context, original.context);
+  assert.equal(retry.lookups, undefined);
+  assert.deepEqual(requests[1], requests[0]);
 });

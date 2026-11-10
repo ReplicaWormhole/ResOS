@@ -119,7 +119,20 @@
               <div id="draft-excerpts"></div>
               <label for="chat-input">Message</label>
               <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
-              <button id="chat-send" type="submit">Send</button>
+              <div class="composer-actions">
+                <button id="preview-context" type="button">
+                  Preview context
+                </button>
+                <label
+                  id="notebook-lookup-setting"
+                  title="Let this response look up excerpts across saved chats in this project."
+                  hidden
+                >
+                  <input id="notebook-lookup" type="checkbox" />
+                  Allow notebook lookup
+                </label>
+                <button id="chat-send" type="submit">Send</button>
+              </div>
             </form>
             <p id="chat-status" role="status"></p>
           </section>

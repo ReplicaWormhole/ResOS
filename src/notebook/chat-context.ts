@@ -17,6 +17,7 @@ export function contextBefore(
         conversationId: chat.id,
         turnId: turn.id,
         question: question.text,
+        questionAuthor: question.author,
         ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
         ...(turn.passages?.length ? { passages: turn.passages } : {}),
         ...(question.id !== turn.id ? { questionRevisionId: question.id } : {}),
@@ -24,6 +25,7 @@ export function contextBefore(
           ? {
               jobId: job.id,
               answer: answer.text,
+              answerAuthor: answer.author,
               ...(answer.id !== job.id ? { answerRevisionId: answer.id } : {}),
             }
           : {}),

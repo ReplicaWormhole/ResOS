@@ -119,6 +119,7 @@ function focalContext(
     conversationId: chat.id,
     turnId: turn.id,
     question: question.text,
+    questionAuthor: question.author,
     questionRevisionId: question.id,
     ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
     ...(turn.passages?.length ? { passages: turn.passages } : {}),
@@ -126,6 +127,7 @@ function focalContext(
       ? {
           jobId: message.id,
           answer: revision.text,
+          answerAuthor: revision.author,
           answerRevisionId: revision.id,
         }
       : {}),

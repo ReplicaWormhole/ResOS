@@ -7,6 +7,7 @@ const threadId = 'fixture-thread';
 const turnId = 'fixture-turn';
 let action;
 let stage = 0;
+let lookupEnabled = false;
 function completed(status) {
   send({
     method: 'turn/completed',
@@ -18,6 +19,7 @@ for await (const line of createInterface({ input: process.stdin })) {
   switch (method) {
     case 'initialize':
       assert.equal(stage++, 0);
+      lookupEnabled = params.capabilities?.experimentalApi === true;
       send({ id, result: {} });
       break;
     case 'initialized':
@@ -29,6 +31,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       assert.equal(params.sandbox, 'workspace-write');
       assert.equal(params.approvalsReviewer, 'user');
       assert.equal(params.cwd, process.cwd());
+      if (lookupEnabled) {
+        assert.equal(params.dynamicTools[0].name, 'resos_search_notebook');
+        assert.equal(params.dynamicTools[0].type, 'function');
+      } else assert.equal(params.dynamicTools, undefined);
       send({ id, result: { thread: { id: threadId } } });
       break;
     case 'turn/start':
@@ -51,6 +57,24 @@ for await (const line of createInterface({ input: process.stdin })) {
         method: 'item/agentMessage/delta',
         params: { threadId, turnId, itemId: 'message', delta: 'partial ' },
       });
+      if (action === 'saved lookup payload') {
+        assert.equal(lookupEnabled, true);
+        for (const [id, scope] of [
+          ['foreign-lookup', { threadId: 'foreign', turnId }],
+          ['other-turn-lookup', { threadId, turnId: 'other' }],
+          ['lookup', { threadId, turnId }],
+        ])
+          send({
+            id,
+            method: 'item/tool/call',
+            params: {
+              ...scope,
+              tool: 'resos_search_notebook',
+              namespace: null,
+              arguments: { query: 'fixture' },
+            },
+          });
+      }
       if (action.includes('review')) {
         const [notice, data, label, question] = action.split('\n\n');
         assert.match(notice, /reference data/);
@@ -85,6 +109,19 @@ for await (const line of createInterface({ input: process.stdin })) {
       completed('interrupted');
       break;
     default:
+      if (id === 'foreign-lookup' || id === 'other-turn-lookup') {
+        assert.equal(result.success, false);
+        break;
+      }
+      if (id === 'lookup') {
+        assert.equal(result.success, true);
+        assert.equal(
+          JSON.parse(result.contentItems[0].text)[0].excerpt,
+          'fixture result',
+        );
+        completed('completed');
+        break;
+      }
       assert.equal(id, 'approval');
       assert.equal(result.decision, 'accept');
       send({

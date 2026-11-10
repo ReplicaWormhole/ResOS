@@ -13,7 +13,18 @@ const api: DesktopApi = {
   listFileNotes: (id) => ipcRenderer.invoke('chats:file-notes', id),
   addFileNote: (id, excerpt, text) =>
     ipcRenderer.invoke('chats:file-note', id, excerpt, text),
-  sendChat: (id, chatId, question, requestId, excerpts, passages) =>
+  supportsNotebookLookup: () => ipcRenderer.invoke('chats:lookup-supported'),
+  previewContext: (id, chatId, question, excerpts, passages, options) =>
+    ipcRenderer.invoke(
+      'chats:preview-context',
+      id,
+      chatId,
+      question,
+      excerpts,
+      passages,
+      options,
+    ),
+  sendChat: (id, chatId, question, requestId, excerpts, passages, options) =>
     ipcRenderer.invoke(
       'chats:send',
       id,
@@ -22,6 +33,7 @@ const api: DesktopApi = {
       requestId,
       excerpts,
       passages,
+      options,
     ),
   stopChat: (id, jobId) => ipcRenderer.invoke('chats:stop', id, jobId),
   retryChat: (id, chatId, jobId, confirm) =>

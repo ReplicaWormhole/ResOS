@@ -131,8 +131,27 @@ function registerDesktopHandlers(
     chats.addFileNote((await projectFor(event, id)).id, excerpt, text),
   );
   ipcMain.handle(
+    'chats:preview-context',
+    async (event, id, chatId, question, excerpts, passages, options) => {
+      if (typeof chatId !== 'string' || chatId.length > 128)
+        throw new Error('Invalid chat ID.');
+      return chats.preview(
+        await availableProject(event, id),
+        chatId,
+        question,
+        excerpts,
+        passages,
+        options,
+      );
+    },
+  );
+  ipcMain.handle('chats:lookup-supported', (event) => {
+    requireAppFrame(event);
+    return chats.supportsNotebookLookup();
+  });
+  ipcMain.handle(
     'chats:send',
-    (event, id, chatId, question, requestId, excerpts, passages) =>
+    (event, id, chatId, question, requestId, excerpts, passages, options) =>
       changeWorkspace(async () => {
         if (typeof chatId !== 'string' || chatId.length > 128)
           throw new Error('Invalid chat ID.');
@@ -143,6 +162,7 @@ function registerDesktopHandlers(
           requestId,
           excerpts,
           passages,
+          options,
         );
       }),
   );

@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import {
   validFileExcerpt,
   validFileExcerpts,
@@ -10,6 +11,11 @@ import type {
   FileNote,
 } from '../shared/notebook-api.js';
 import { readJson, replaceJson } from '../storage/local-json.js';
+import {
+  MAX_LOOKUP_QUERY,
+  MAX_LOOKUP_RESULTS,
+  MAX_NOTEBOOK_LOOKUPS,
+} from './lookup.js';
 
 interface NotebookData {
   version: 2;
@@ -49,6 +55,54 @@ function isFileNote(value: unknown): value is FileNote {
   );
 }
 
+function isAuthor(value: unknown): boolean {
+  return value === 'user' || value === 'agent';
+}
+
+function isInput(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.initialText === 'string' &&
+    typeof value.limitBytes === 'number' &&
+    Number.isSafeInteger(value.limitBytes) &&
+    typeof value.usedBytes === 'number' &&
+    Number.isSafeInteger(value.usedBytes) &&
+    value.usedBytes > 0 &&
+    value.usedBytes <= value.limitBytes &&
+    value.usedBytes === Buffer.byteLength(value.initialText) &&
+    typeof value.lookupEnabled === 'boolean' &&
+    Array.isArray(value.omitted) &&
+    value.omitted.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.conversationId === 'string' &&
+        typeof entry.turnId === 'string' &&
+        typeof entry.questionRevisionId === 'string' &&
+        (entry.answerRevisionId === undefined ||
+          typeof entry.answerRevisionId === 'string') &&
+        typeof entry.retainedQuote === 'boolean',
+    )
+  );
+}
+
+function isLookup(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.query === 'string' &&
+    value.query.length <= MAX_LOOKUP_QUERY &&
+    Array.isArray(value.matches) &&
+    value.matches.length <= MAX_LOOKUP_RESULTS &&
+    value.matches.every(
+      (match) =>
+        isRecord(match) &&
+        ['conversationId', 'messageId', 'revisionId', 'title', 'excerpt'].every(
+          (key) => typeof match[key] === 'string',
+        ) &&
+        isAuthor(match.author),
+    )
+  );
+}
+
 function isContext(value: unknown): boolean {
   return (
     Array.isArray(value) &&
@@ -61,6 +115,9 @@ function isContext(value: unknown): boolean {
         ['answer', 'jobId', 'questionRevisionId', 'answerRevisionId'].every(
           (key) => entry[key] === undefined || typeof entry[key] === 'string',
         ) &&
+        (entry.questionAuthor === undefined ||
+          isAuthor(entry.questionAuthor)) &&
+        (entry.answerAuthor === undefined || isAuthor(entry.answerAuthor)) &&
         (entry.passage === undefined || isPassage(entry.passage)) &&
         (entry.excerpts === undefined || validFileExcerpts(entry.excerpts)) &&
         (entry.passages === undefined || arePassages(entry.passages)),
@@ -102,7 +159,7 @@ function isJob(value: unknown): value is ChatJob {
     typeof value.cwd === 'string' &&
     typeof value.answer === 'string' &&
     (value.error === undefined || typeof value.error === 'string') &&
-    ['startedAt', 'finishedAt', 'threadId', 'turnId'].every(
+    ['startedAt', 'finishedAt', 'threadId', 'turnId', 'submittedAt'].every(
       (field) => value[field] === undefined || typeof value[field] === 'string',
     ) &&
     (value.runtime === undefined ||
@@ -114,6 +171,11 @@ function isJob(value: unknown): value is ChatJob {
         Number.isSafeInteger(value.queueOrder))) &&
     (value.retryOf === undefined || typeof value.retryOf === 'string') &&
     (value.context === undefined || isContext(value.context)) &&
+    (value.input === undefined || isInput(value.input)) &&
+    (value.lookups === undefined ||
+      (Array.isArray(value.lookups) &&
+        value.lookups.length <= MAX_NOTEBOOK_LOOKUPS &&
+        value.lookups.every(isLookup))) &&
     isHistory(value) &&
     (value.status === 'queued' ||
       value.status === 'running' ||

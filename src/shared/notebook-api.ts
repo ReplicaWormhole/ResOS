@@ -6,9 +6,49 @@ export interface ContextEntry {
   answer?: string;
   questionRevisionId?: string;
   answerRevisionId?: string;
+  questionAuthor?: MessageRevision['author'];
+  answerAuthor?: MessageRevision['author'];
   passage?: Passage;
   excerpts?: FileExcerpt[];
   passages?: Passage[];
+}
+
+export interface OmittedContext {
+  conversationId: string;
+  turnId: string;
+  questionRevisionId: string;
+  answerRevisionId?: string;
+  retainedQuote: boolean;
+}
+
+export interface PreparedInput {
+  initialText: string;
+  limitBytes: number;
+  usedBytes: number;
+  omitted: OmittedContext[];
+  lookupEnabled: boolean;
+}
+
+export interface ContextPreview extends PreparedInput {
+  context: ContextEntry[];
+  previewId: string;
+  cwd: string;
+}
+
+export interface ContextOptions {
+  lookupEnabled: boolean;
+  previewId?: string;
+}
+
+export interface NotebookMatch extends MessageAddress {
+  title: string;
+  author: MessageRevision['author'];
+  excerpt: string;
+}
+
+export interface NotebookLookup {
+  query: string;
+  matches: NotebookMatch[];
 }
 
 export interface ApprovalRequest {
@@ -25,6 +65,9 @@ export interface ChatJob extends MessageHistory {
   status: 'queued' | 'running' | 'complete' | 'interrupted' | 'failed';
   answer: string;
   context?: ContextEntry[];
+  input?: PreparedInput;
+  submittedAt?: string;
+  lookups?: NotebookLookup[];
   runtime?: 'demo' | 'codex';
   requestId?: string;
   queueOrder?: number;
@@ -70,7 +113,16 @@ export interface ChatApi {
     requestId: string,
     excerpts?: FileExcerpt[],
     passages?: Passage[],
+    options?: ContextOptions,
   ): Promise<void>;
+  previewContext(
+    projectId: string,
+    chatId: string,
+    question: string,
+    excerpts: FileExcerpt[],
+    passages: Passage[],
+    options: ContextOptions,
+  ): Promise<ContextPreview>;
   stopChat(projectId: string, jobId: string): Promise<void>;
   retryChat(
     projectId: string,
@@ -85,6 +137,7 @@ export interface ChatApi {
     accept: boolean,
   ): Promise<void>;
   chatRuntime(): Promise<'demo' | 'codex'>;
+  supportsNotebookLookup(): Promise<boolean>;
   reviseMessage(
     projectId: string,
     address: MessageAddress,

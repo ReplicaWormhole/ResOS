@@ -3,6 +3,7 @@ import type {
   ContextEntry,
   FileExcerpt,
   FileSource,
+  NotebookMatch,
   Passage,
 } from '../shared/notebook-api.js';
 
@@ -19,6 +20,8 @@ export interface ChatRequest {
 
 export interface RuntimeControls {
   readonly signal: AbortSignal;
+  readonly initialInput?: string;
+  lookupNotebook?(query: string): Promise<NotebookMatch[]>;
   identify?(threadId: string, turnId: string): Promise<void>;
   approve(
     request: Omit<ApprovalRequest, 'id' | 'jobId' | 'chatId'>,
@@ -27,6 +30,8 @@ export interface RuntimeControls {
 }
 
 export interface ChatRuntime {
+  readonly inputLimitBytes?: number;
+  readonly supportsNotebookLookup?: boolean;
   stream(
     request: ChatRequest,
     controls: RuntimeControls,

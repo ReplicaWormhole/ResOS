@@ -381,7 +381,19 @@ test(
       await project('Alpha').click();
       await newChat.click();
       await composer.fill('Alpha question');
-      await send.click();
+      await window.getByRole('button', { name: 'Preview context' }).click();
+      const preview = window.getByRole('dialog', { name: 'Context preview' });
+      await preview.getByText('Alpha question', { exact: true }).waitFor();
+      await preview.getByText(/Notebook lookup off/).waitFor();
+      assert.equal(
+        await window
+          .getByRole('checkbox', { name: 'Allow notebook lookup' })
+          .count(),
+        0,
+      );
+      await preview
+        .getByRole('button', { name: 'Send reviewed input' })
+        .click();
       await transcript.locator('[data-status=running]').waitFor();
 
       await project('Beta').click();
@@ -395,6 +407,19 @@ test(
       await project('Alpha').click();
       await transcript.locator('[data-status=complete]').waitFor();
       assert.match(await transcript.innerText(), /Alpha question/);
+      const finished = transcript.locator('article[data-status=complete]');
+      await finished.getByText('Message actions', { exact: true }).click();
+      await finished.getByText('Run context', { exact: true }).click();
+      const prepared = finished
+        .locator('details')
+        .filter({ has: window.locator('summary:text-is("Prepared input")') })
+        .last();
+      await prepared.getByText('Prepared input', { exact: true }).click();
+      assert.equal(
+        await prepared.locator('pre').textContent(),
+        'Alpha question',
+      );
+      await finished.getByText('Message actions', { exact: true }).click();
       const originalChatId = await activeChat.getAttribute('data-chat-id');
       await newChat.click();
       await transcript
@@ -473,7 +498,10 @@ test(
       await window.locator('#chats-content').waitFor();
       await window.getByRole('button', { name: 'Beta', exact: true }).click();
       await window.locator('#files-content').waitFor();
-      await transcript.getByText('Beta question', { exact: true }).waitFor();
+      await transcript
+        .locator('.chat-rich')
+        .getByText('Beta question', { exact: true })
+        .waitFor();
       assert.doesNotMatch(await transcript.innerText(), /Alpha question/);
     } finally {
       await reopened.close();

@@ -76,6 +76,25 @@ Its conversation history stays accessible while the folder is missing.
 Choose the new location to re-enable the editor and sending. The notebook
 is saved beside the registry in the app data directory as `notebook.json`.
 
+## Preview and inspect context
+
+Use **Preview context** to see the initial input, the project folder, and
+any history that would be omitted. **Send reviewed input** checks that the
+prepared input still matches the preview. ResOS budgets the initial input
+in UTF-8 bytes, keeping your question, explicit attachments, and pinned
+discussion quotes before fitting recent history. The harness may add its
+own instructions, tool definitions, or later tool results.
+
+Open **Message actions** and then **Run context** on a reply to inspect
+the saved input and omitted revision IDs. A retry keeps the original
+input and lookup choice when they were recorded.
+
+In Codex mode, **Allow notebook lookup** lets one response search saved
+message revisions across chats in the same project. It starts off for
+each new send. Lookup results are bounded and recorded separately from
+the initial input. The lookup tool excludes notes and returns excerpts
+with their source revision IDs.
+
 ## Questions and annotations
 
 Select text in a saved chat message or the editor to show the selection

@@ -197,3 +197,23 @@ every jump validates the range again before selecting it.
   as the source of the backup. Restoring it in the new package preserved
   project IDs, notes, revisions, and both source types. Saving a new chat
   wrote format 2 while retaining the original conversations.
+
+## V2-03 · Inspectable context
+
+- `npm run check` passed all 19 unit tests. A long-history fixture checked
+  the byte limit with Unicode, pinned quotes, current attachments, omitted
+  revision IDs, stale-preview rejection, project and sibling isolation,
+  and reuse of the exact input on retry. The protocol fixture verified the
+  saved text sent to Codex and rejected lookup calls from other threads
+  and turns.
+- `npm run package:linux` built a scratch Debian package using the verified
+  Electron cache. The desktop entry passed `desktop-file-validate`. All
+  six desktop tests passed against the extracted package under isolated
+  Xvfb, including context preview, sending reviewed input, opening the
+  prepared text, and restoring a backup made with the v1.0.0 executable.
+- A live source-build check with Codex CLI 0.167.0 used two disposable
+  projects. An opt-in lookup returned a marker from another chat in the
+  originating project and omitted the matching marker in the second
+  project. The saved submitted text matched the review, and lookup was
+  off for the next draft. The byte cap covers the app's initial text.
+  Harness-added input and later tool results have separate limits.
