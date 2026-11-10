@@ -1,12 +1,22 @@
-import type { HarnessModel, RunSettings } from './notebook-api.js';
+import type { Harness, HarnessModel, RunSettings } from './notebook-api.js';
+
+export function validHarness(value: unknown): value is Harness {
+  return value === 'demo' || value === 'codex' || value === 'claude';
+}
+
+export const harnessLabels: Record<Harness, string> = {
+  demo: 'ResOS demo',
+  codex: 'Codex',
+  claude: 'Claude Code',
+};
 
 export function validRunSettings(value: unknown): value is RunSettings {
   if (!value || typeof value !== 'object') return false;
   const { harness, mode, model, effort } = value as RunSettings;
   return (
-    (harness === 'demo' || harness === 'codex') &&
-    (mode === 'ask' || (harness === 'codex' && mode === 'agent')) &&
-    (model === undefined || (harness === 'codex' && validSettingId(model))) &&
+    validHarness(harness) &&
+    (mode === 'ask' || (harness !== 'demo' && mode === 'agent')) &&
+    (model === undefined || (harness !== 'demo' && validSettingId(model))) &&
     (effort === undefined || (model !== undefined && validSettingId(effort)))
   );
 }

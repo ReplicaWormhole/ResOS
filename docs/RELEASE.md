@@ -1,15 +1,17 @@
 # ResOS desktop release guide
 
 The supported package is an Ubuntu 24.04 or later x86-64 Debian package.
-Install the Codex CLI separately and sign in as your desktop user.
+Install the harness CLIs you plan to use separately and sign in as your
+desktop user. The package includes the Claude Agent SDK and depends on
+Bubblewrap for approved Claude Code commands.
 
 ## Verify and install
 
 Verify and install from the directory containing the package and its checksum.
 
 ```sh
-sha256sum -c resos_1.0.0_amd64.deb.sha256
-sudo apt install ./resos_1.0.0_amd64.deb
+sha256sum -c resos_2.0.0_amd64.deb.sha256
+sudo apt install ./resos_2.0.0_amd64.deb
 ```
 
 Quit an older ResOS session before upgrading. The same install command
@@ -26,6 +28,10 @@ path explicitly when launching from a terminal.
 RESOS_CODEX_BIN="$(command -v codex)" /opt/ResOS/resos
 ```
 
+Use `claude --version` and `claude auth login` for Claude Code. The minimum
+supported CLI version is 2.1.248. Set `RESOS_CLAUDE_BIN` if the desktop
+launcher cannot find it. Select **Claude Code** in the composer after launch.
+
 A folder that has moved can be reconnected with **Locate folder**. Its
 existing notebook is keyed by project ID and stays visible while the folder
 is unavailable. Check the error shown by a failed attempt and use
@@ -37,9 +43,9 @@ questions and selected context to the model service configured in the CLI.
 Quit ResOS before copying. The app keeps project IDs and locations in
 `projects.json` and conversation data in `notebook.json` under
 `${XDG_CONFIG_HOME:-$HOME/.config}/ResOS`. The notebook includes messages,
-revisions, file and message notes, discussions, excerpts, and recorded runs. Keep the backup
-private because these files can contain sensitive text. Project files,
-Codex credentials, and in-session drafts are separate.
+revisions, file and message notes, discussions, excerpts, and recorded runs.
+Keep the backup private because these files can contain sensitive text.
+Project files, harness credentials, and in-session drafts are separate.
 
 ```sh
 umask 077
@@ -87,8 +93,8 @@ Use a clean checkout, Node from `.nvmrc`, and the Ubuntu packages
 ```sh
 npm ci
 npm run release:linux
-(cd release && sha256sum -c resos_1.0.0_amd64.deb.sha256)
-sudo apt install ./release/resos_1.0.0_amd64.deb
+(cd release && sha256sum -c resos_2.0.0_amd64.deb.sha256)
+sudo apt install ./release/resos_2.0.0_amd64.deb
 RESOS_EXECUTABLE=/opt/ResOS/resos xvfb-run -a npm run test:desktop
 ```
 
@@ -98,10 +104,12 @@ application menu, cancel a folder selection, then add two folders and verify
 that both reappear after relaunching.
 
 For a live check with a signed-in CLI and a disposable project and profile,
-run the desktop Codex smoke test.
+run the desktop harness smoke test. With both CLIs signed in, enable the
+Claude Code extension to exercise both harnesses in the same project.
 
 ```sh
 RESOS_EXECUTABLE=/opt/ResOS/resos xvfb-run -a node scripts/desktop-codex-smoke.mjs
+RESOS_EXECUTABLE=/opt/ResOS/resos RESOS_VERIFY_CLAUDE=1 xvfb-run -a node scripts/desktop-codex-smoke.mjs
 ```
 
 The [Build desktop release](../.github/workflows/desktop-release.yml) workflow

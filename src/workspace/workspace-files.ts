@@ -1,8 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { open, readdir, realpath, rename, unlink } from 'node:fs/promises';
+import {
+  copyFile,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  realpath,
+  rename,
+  unlink,
+} from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   WorkspaceEntry,
   WorkspaceFile,
@@ -215,4 +225,123 @@ export async function saveFile(
       if (!renamed) await unlink(temporary);
     }
   });
+}
+
+// Publish only after the complete contents are on disk, without overwriting a
+// file or symlink that appeared between approval and publication.
+export async function createFile(
+  root: string,
+  relative: string,
+  text: string,
+): Promise<WorkspaceSave> {
+  if (
+    typeof text !== 'string' ||
+    Buffer.byteLength(text) > maxBytes ||
+    text.includes('\0') ||
+    !text.isWellFormed()
+  ) {
+    throw new Error('Invalid editor contents.');
+  }
+  return withFile(root, relative, async (path, directory, checkLocation) => {
+    const temporary = join(directory, '.resos-' + randomUUID() + '.tmp');
+    const file = await open(temporary, 'wx', 0o600);
+    try {
+      try {
+        await file.writeFile(text, 'utf8');
+      } finally {
+        await file.close();
+      }
+      await checkLocation();
+      try {
+        await link(temporary, path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+          return { status: 'conflict' };
+        throw error;
+      }
+      return {
+        status: 'saved',
+        revision: createHash('sha256').update(text).digest('hex'),
+      };
+    } finally {
+      await unlink(temporary);
+    }
+  });
+}
+
+export async function checkNewFilePath(
+  root: string,
+  relative: string,
+): Promise<void> {
+  await withFile(root, relative, async (path) => {
+    try {
+      await lstat(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    throw new Error(
+      'The target already exists. Read its current revision to replace it.',
+    );
+  });
+}
+
+/** Copy regular project files into a private directory for command execution. */
+export async function snapshotWorkspace(
+  root: string,
+  destination: string,
+  signal: AbortSignal,
+): Promise<void> {
+  let count = 0;
+  let totalBytes = 0n;
+  const scratch = dirname(await realpath(destination));
+  async function copyDirectory(parts: string[], target: string): Promise<void> {
+    await inDirectory(root, parts, async (directory, checkLocation) => {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        signal.throwIfAborted();
+        if (
+          entry.name === '.git' ||
+          join(root, ...parts, entry.name) === scratch ||
+          !(entry.isFile() || entry.isDirectory())
+        )
+          continue;
+        if (++count > 30_000)
+          throw new Error(
+            'The project exceeds the 30,000-entry command snapshot limit.',
+          );
+        const output = join(target, entry.name);
+        if (entry.isDirectory()) {
+          await mkdir(output, { mode: 0o700 });
+          await copyDirectory([...parts, entry.name], output);
+          continue;
+        }
+        const source = await open(join(directory, entry.name), readFlags);
+        try {
+          const before = await source.stat({ bigint: true });
+          if (!before.isFile())
+            throw new Error(
+              'The project changed while making a command snapshot.',
+            );
+          await checkLocation();
+          totalBytes += before.size;
+          if (totalBytes > 512n * 1024n * 1024n)
+            throw new Error(
+              'The project exceeds the 512 MiB command snapshot limit.',
+            );
+          await copyFile(
+            descriptorPath(source),
+            output,
+            constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE,
+          );
+          const after = await source.stat({ bigint: true });
+          if (after.size !== before.size || after.ctimeNs !== before.ctimeNs)
+            throw new Error('A file changed while making a command snapshot.');
+        } finally {
+          await source.close();
+        }
+      }
+      await checkLocation();
+    });
+  }
+  await copyDirectory([], destination);
 }

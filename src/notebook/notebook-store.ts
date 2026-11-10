@@ -10,7 +10,11 @@ import type {
   Conversation,
   FileNote,
 } from '../shared/notebook-api.js';
-import { validRunSettings, validSettingId } from '../shared/run-settings.js';
+import {
+  validHarness,
+  validRunSettings,
+  validSettingId,
+} from '../shared/run-settings.js';
 import { readJson, replaceJson } from '../storage/local-json.js';
 import {
   MAX_LOOKUP_QUERY,
@@ -163,9 +167,7 @@ function isJob(value: unknown): value is ChatJob {
     ['startedAt', 'finishedAt', 'threadId', 'turnId', 'submittedAt'].every(
       (field) => value[field] === undefined || typeof value[field] === 'string',
     ) &&
-    (value.runtime === undefined ||
-      value.runtime === 'demo' ||
-      value.runtime === 'codex') &&
+    (value.runtime === undefined || validHarness(value.runtime)) &&
     (value.requestId === undefined || typeof value.requestId === 'string') &&
     (value.queueOrder === undefined ||
       (typeof value.queueOrder === 'number' &&

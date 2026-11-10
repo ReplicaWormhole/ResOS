@@ -42,7 +42,7 @@ export interface ContextOptions {
   settings?: RunSettings;
 }
 
-export type Harness = 'demo' | 'codex';
+export type Harness = 'demo' | 'codex' | 'claude';
 export type RunMode = 'ask' | 'agent';
 
 export interface RunSettings {
@@ -102,7 +102,7 @@ export interface ChatJob extends MessageHistory {
   effectiveSettings?: EffectiveRunSettings;
   submittedAt?: string;
   lookups?: NotebookLookup[];
-  runtime?: 'demo' | 'codex';
+  runtime?: Harness;
   requestId?: string;
   queueOrder?: number;
   startedAt?: string;
@@ -171,9 +171,8 @@ export interface ChatApi {
     approvalId: string,
     accept: boolean,
   ): Promise<void>;
-  chatRuntime(): Promise<'demo' | 'codex'>;
-  supportsNotebookLookup(): Promise<boolean>;
-  harnessCatalog(projectId: string): Promise<HarnessCatalog>;
+  listHarnesses(): Promise<Harness[]>;
+  harnessCatalog(projectId: string, harness: Harness): Promise<HarnessCatalog>;
   reviseMessage(
     projectId: string,
     address: MessageAddress,

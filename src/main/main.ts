@@ -14,6 +14,8 @@ import { pathToFileURL } from 'node:url';
 import { ChatService } from '../jobs/chat-service.js';
 import { NotebookStore } from '../notebook/notebook-store.js';
 import { isAvailable, ProjectRegistry } from '../projects/project-registry.js';
+import { ClaudeRuntime } from '../runtime/claude/claude-runtime.js';
+import { findClaude } from '../runtime/claude/find-claude.js';
 import { CodexRuntime } from '../runtime/codex/codex-runtime.js';
 import { findCodex } from '../runtime/codex/find-codex.js';
 import { demoRuntime } from '../runtime/demo-runtime.js';
@@ -32,11 +34,17 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'resos', privileges: { standard: true, secure: true } },
 ]);
 
+let pendingWorkspaceChange: Promise<unknown> = Promise.resolve();
+function changeWorkspace<T>(operation: () => Promise<T>): Promise<T> {
+  const change = pendingWorkspaceChange.then(operation);
+  pendingWorkspaceChange = change.catch(() => {});
+  return change;
+}
+
 function registerDesktopHandlers(
   window: BrowserWindow,
   registry: ProjectRegistry,
   chats: ChatService,
-  runtimeMode: 'demo' | 'codex',
 ): void {
   function requireAppFrame(event: IpcMainInvokeEvent): void {
     const frame = event.senderFrame;
@@ -69,13 +77,6 @@ function registerDesktopHandlers(
     if (!(await isAvailable(project.root)))
       throw new Error('Locate the project folder before continuing.');
     return project;
-  }
-
-  let pendingWorkspaceChange: Promise<unknown> = Promise.resolve();
-  function changeWorkspace<T>(operation: () => Promise<T>): Promise<T> {
-    const change = pendingWorkspaceChange.then(operation);
-    pendingWorkspaceChange = change.catch(() => {});
-    return change;
   }
 
   ipcMain.handle('workspace:list', async (event, id, path) =>
@@ -145,12 +146,12 @@ function registerDesktopHandlers(
       );
     },
   );
-  ipcMain.handle('chats:harness-catalog', async (event, id) =>
-    chats.harnessCatalog((await availableProject(event, id)).root),
+  ipcMain.handle('chats:harness-catalog', async (event, id, harness) =>
+    chats.harnessCatalog((await availableProject(event, id)).root, harness),
   );
-  ipcMain.handle('chats:lookup-supported', (event) => {
+  ipcMain.handle('chats:harnesses', (event) => {
     requireAppFrame(event);
-    return chats.supportsNotebookLookup();
+    return chats.listHarnesses();
   });
   ipcMain.handle(
     'chats:send',
@@ -185,10 +186,6 @@ function registerDesktopHandlers(
     chats.createDiscussion((await projectFor(event, id)).id, passage),
   );
 
-  ipcMain.handle('chats:runtime', (event) => {
-    requireAppFrame(event);
-    return runtimeMode;
-  });
   ipcMain.handle('chats:stop', async (event, id, jobId) => {
     if (typeof jobId !== 'string' || jobId.length > 128)
       throw new Error('Invalid job ID.');
@@ -304,6 +301,7 @@ async function openWindow(): Promise<void> {
     runtimeMode === 'demo' ? 'codex' : await findCodex(),
     app.getVersion(),
   );
+  const claudeBinary = runtimeMode === 'codex' ? await findClaude() : undefined;
   const chats = new ChatService(
     notebook,
     runtimeMode === 'demo' ? demoRuntime : codex,
@@ -311,12 +309,15 @@ async function openWindow(): Promise<void> {
       if (!window.isDestroyed()) window.webContents.send('chats:changed', id);
     },
     runtimeMode,
+    claudeBinary
+      ? { claude: new ClaudeRuntime(claudeBinary, changeWorkspace) }
+      : {},
   );
   app.once('before-quit', () => {
     chats.close();
     codex.close();
   });
-  registerDesktopHandlers(window, registry, chats, runtimeMode);
+  registerDesktopHandlers(window, registry, chats);
   await window.loadURL(homeUrl);
 }
 

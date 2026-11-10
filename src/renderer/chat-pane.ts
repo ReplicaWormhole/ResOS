@@ -20,6 +20,7 @@ import type {
   MessageRevision,
 } from '../shared/notebook-api.js';
 import { renderRichText } from './rich-text.js';
+import { harnessLabels } from '../shared/run-settings.js';
 import { RunSettingsControl } from './run-settings-control.js';
 import type { SelectionActions } from './selection-toolbar.js';
 
@@ -125,16 +126,6 @@ export class ChatPane {
   ) {
     this.runSettings = new RunSettingsControl(api, () => this.renderComposer());
     window.setInterval(() => void this.refreshExcerptLinks(), 1500);
-    void api
-      .chatRuntime()
-      .then((mode) => {
-        document.querySelector('#chat-runtime')!.textContent =
-          mode === 'demo'
-            ? 'Demo runtime · Responses are generated locally.'
-            : 'Codex · Messages and saved context are sent to your configured model service.';
-        this.render(false);
-      })
-      .catch((error: unknown) => this.showError(error));
     this.backButton.addEventListener('click', () => {
       const chat = this.current;
       if (!chat) return;
@@ -165,14 +156,6 @@ export class ChatPane {
         else fileSide.collapse();
       }
     });
-    void api
-      .supportsNotebookLookup()
-      .then((supported) => {
-        document.querySelector<HTMLElement>(
-          '#notebook-lookup-setting',
-        )!.hidden = !supported;
-      })
-      .catch((error: unknown) => this.showError(error));
     this.lookup.addEventListener('change', () => {
       if (!this.current) return;
       if (this.lookup.checked) this.lookupDrafts.add(this.current.id);
@@ -672,7 +655,7 @@ export class ChatPane {
     const answer = this.renderMessage(
       chat,
       job,
-      job.runtime === 'codex' ? 'Codex' : 'ResOS demo',
+      harnessLabels[job.runtime ?? 'demo'],
       job.status === 'queued'
         ? 'Queued…'
         : live
@@ -900,7 +883,7 @@ export class ChatPane {
           this.renderMessage(
             parent,
             job,
-            job.runtime === 'codex' ? 'Codex' : 'ResOS demo',
+            harnessLabels[job.runtime ?? 'demo'],
             '',
             true,
           ),
@@ -1212,7 +1195,9 @@ export class ChatPane {
     const question = this.input.value;
     const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
     const passages = this.draftPassages.get(chat.id) ?? noPassages;
-    const lookupEnabled = this.lookupDrafts.has(chat.id);
+    const lookupEnabled =
+      this.runSettings.supportsNotebookLookup() &&
+      this.lookupDrafts.has(chat.id);
     const { dialog, close } = this.dialog('Context preview');
     const info = document.createElement('p');
     info.setAttribute('role', 'status');
@@ -1302,12 +1287,16 @@ export class ChatPane {
       !this.runSettings.selected() ||
       !this.input.value.trim();
     this.previewButton.disabled = this.sendButton.disabled;
+    document.querySelector<HTMLElement>('#notebook-lookup-setting')!.hidden =
+      !this.runSettings.supportsNotebookLookup();
     this.lookup.disabled =
       !this.current ||
       !this.available ||
       Boolean(id && this.submitting.has(id));
     this.lookup.checked =
-      !!this.current && this.lookupDrafts.has(this.current.id);
+      this.runSettings.supportsNotebookLookup() &&
+      !!this.current &&
+      this.lookupDrafts.has(this.current.id);
     this.status.textContent = !this.available
       ? 'Locate the project folder to send messages.'
       : busy
@@ -1351,7 +1340,9 @@ export class ChatPane {
       let request = this.requestIds.get(chat.id);
       const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
       const passages = this.draftPassages.get(chat.id) ?? noPassages;
-      const lookupEnabled = this.lookupDrafts.has(chat.id);
+      const lookupEnabled =
+        this.runSettings.supportsNotebookLookup() &&
+        this.lookupDrafts.has(chat.id);
       if (
         request?.question !== question ||
         request?.excerpts !== excerpts ||

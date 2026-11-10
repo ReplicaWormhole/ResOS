@@ -1,6 +1,6 @@
 {
   "name": "resos",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "A local research IDE and Codex notebook",
   "author": "ResOS contributors",
@@ -30,7 +30,8 @@
       "output": "release"
     },
     "files": [
-      "dist/**"
+      "dist/**",
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     ],
     "linux": {
       "executableName": "resos",
@@ -51,7 +52,8 @@
         "libuuid1",
         "libsecret-1-0",
         "libasound2t64",
-        "libgbm1"
+        "libgbm1",
+        "bubblewrap"
       ]
     },
     "publish": null
@@ -72,6 +74,7 @@
   "productName": "ResOS",
   "desktopName": "resos.desktop",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/lang-python": "6.2.1",
     "@codemirror/language": "6.13.1",
@@ -79,8 +82,10 @@
     "@codemirror/search": "6.7.2",
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "codemirror": "6.0.2",
     "katex": "0.19.1",
-    "mdast-util-from-markdown": "2.1.0"
+    "mdast-util-from-markdown": "2.1.0",
+    "zod": "4.6.7"
   }
 }

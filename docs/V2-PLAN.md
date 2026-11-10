@@ -1,7 +1,6 @@
-# ResOS v2 draft plan
+# ResOS v2 plan
 
-This proposal extends the [v1 spec](SPEC.md). Review the interaction and scope
-before implementation. The first usable slice is opening a local folder,
+This plan extends the [v1 spec](SPEC.md). The first usable slice is opening a local folder,
 starting a chat, reading a file, and asking about selected text without
 losing your place. The v2 release adds model controls and a second coding
 harness to that workflow.

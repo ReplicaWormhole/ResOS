@@ -241,3 +241,30 @@ every jump validates the range again before selecting it.
   that discovery did not start the server. A per-server override disabled
   it. The adapter verifies these overrides at runtime and fails if policy
   requirements prevent their application.
+
+## V2-05 · Second harness and release candidate
+
+- `RESOS_TEST_SANDBOX=1 npm run check` passed formatting, lint, typecheck,
+  build, and 26 tests. The sandbox check verified an in-snapshot read,
+  private scratch writes, blocked project writes, blocked socket creation,
+  outside-path isolation, and cancellation.
+- The credential-free desktop fixture switched between Codex and Claude
+  in a single conversation. It exercised streamed replies, model and effort
+  selection, Ask mode, write approval, project isolation, command denial,
+  Stop with an outstanding approval, and retry after switching the composer
+  to another harness.
+- The Ubuntu 24.04 x86-64 Debian package and SHA-256 sidecar were verified.
+  The package includes the Agent SDK, its MCP peer, and Zod, with the optional
+  Claude Code executable excluded. A fresh Ubuntu 24.04 container installed
+  the package with APT and validated its desktop entry. All eight packaged
+  smoke tests passed, including restoring a backup produced by the verified
+  v1 executable and checking project IDs, revisions, and both source types.
+  Chromium sandboxing stayed enabled with the setuid helper configured in
+  the container. The separate Bubblewrap test used a container with its
+  usual read-only system paths relaxed so Bubblewrap could set its own
+  namespace limit.
+- Live Codex streamed a reply from the v2 executable in a disposable
+  project. Claude Code 2.1.322 reported a model catalog and confirmed its
+  effective model at startup. The first live Claude turn received HTTP 401
+  for the existing OAuth token. The two-harness live acceptance check is
+  pending Claude sign-in. No release has been published.

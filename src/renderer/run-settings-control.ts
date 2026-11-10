@@ -1,10 +1,15 @@
 import type {
   ChatApi,
+  Harness,
   HarnessCatalog,
   RunMode,
   RunSettings,
 } from '../shared/notebook-api.js';
-import { validateModelSelection } from '../shared/run-settings.js';
+import {
+  harnessLabels,
+  validHarness,
+  validateModelSelection,
+} from '../shared/run-settings.js';
 
 export class RunSettingsControl {
   private readonly host = document.querySelector<HTMLElement>('#run-settings')!;
@@ -23,6 +28,10 @@ export class RunSettingsControl {
   )!;
   private readonly drafts = new Map<string, RunSettings>();
   private catalog?: HarnessCatalog;
+  private harnesses?: Harness[];
+  private choice?: Harness;
+  private readonly banner =
+    document.querySelector<HTMLElement>('#chat-runtime')!;
   private projectId?: string;
   private chatId?: string;
   private available = false;
@@ -34,6 +43,9 @@ export class RunSettingsControl {
     private readonly changed: () => void,
   ) {
     this.refresh.addEventListener('click', () => void this.load());
+    this.harness.addEventListener('change', () => {
+      if (validHarness(this.harness.value)) void this.load(this.harness.value);
+    });
     this.mode.addEventListener('change', () =>
       this.save({ mode: this.mode.value as RunMode }),
     );
@@ -53,6 +65,7 @@ export class RunSettingsControl {
     this.projectId = projectId;
     this.available = available;
     this.catalog = undefined;
+    this.choice = undefined;
     this.loading = false;
     this.request++;
     this.status.textContent = '';
@@ -63,7 +76,10 @@ export class RunSettingsControl {
   selectChat(chatId: string | undefined): void {
     if (this.chatId === chatId) return;
     this.chatId = chatId;
-    this.render();
+    const settings = chatId ? this.drafts.get(chatId) : undefined;
+    if (settings && this.available && settings.harness !== this.choice)
+      void this.load(settings.harness);
+    else this.render();
   }
 
   selected(): RunSettings | undefined {
@@ -87,17 +103,32 @@ export class RunSettingsControl {
     this.changed();
   }
 
-  private async load(): Promise<void> {
+  supportsNotebookLookup(): boolean {
+    return this.catalog?.supportsNotebookLookup === true;
+  }
+
+  private async load(harness?: Harness): Promise<void> {
     const projectId = this.projectId;
     if (!projectId || !this.available) return;
     const request = ++this.request;
     this.catalog = undefined;
+    if (harness) this.choice = harness;
     this.loading = true;
     this.status.textContent = 'Loading harness settings…';
     this.render();
     this.changed();
     try {
-      const catalog = await this.api.harnessCatalog(projectId);
+      const harnesses = this.harnesses ?? (await this.api.listHarnesses());
+      if (request !== this.request) return;
+      this.harnesses = harnesses;
+      const selected =
+        this.choice && harnesses.includes(this.choice)
+          ? this.choice
+          : harnesses[0];
+      if (!selected) throw new Error('No coding harnesses are available.');
+      this.choice = selected;
+      this.render();
+      const catalog = await this.api.harnessCatalog(projectId, selected);
       if (request !== this.request) return;
       this.catalog = catalog;
       this.status.textContent = '';
@@ -116,9 +147,20 @@ export class RunSettingsControl {
 
   private render(): void {
     const catalog = this.catalog;
-    this.host.hidden = !this.available || catalog?.harness === 'demo';
+    this.host.hidden = !this.available || this.choice === 'demo';
+    this.banner.textContent =
+      this.choice === 'demo'
+        ? 'Demo runtime · Responses are generated locally.'
+        : this.choice
+          ? harnessLabels[this.choice] +
+            ' · Messages and selected context go to the configured model service.'
+          : '';
     this.refresh.disabled = this.loading;
-    this.harness.disabled = true;
+    this.harness.replaceChildren(
+      ...(this.harnesses ?? []).map((id) => new Option(harnessLabels[id], id)),
+    );
+    this.harness.value = this.choice ?? '';
+    this.harness.disabled = !this.harnesses || this.harnesses.length < 2;
     this.model.disabled = !catalog || !this.chatId;
     this.mode.disabled = !catalog || !this.chatId;
     this.effort.disabled = true;
@@ -134,12 +176,6 @@ export class RunSettingsControl {
       };
       this.drafts.set(this.chatId, settings);
     }
-    this.harness.replaceChildren(
-      new Option(
-        catalog.harness === 'codex' ? 'Codex' : 'Demo',
-        catalog.harness,
-      ),
-    );
     this.mode.replaceChildren(
       ...catalog.modes.map(
         (mode) => new Option(mode === 'ask' ? 'Ask' : 'Agent', mode),
@@ -149,7 +185,9 @@ export class RunSettingsControl {
     const policy =
       settings.mode === 'ask'
         ? 'Read-only tools · No escalation'
-        : 'Project writes · Approval for escalation';
+        : settings.harness === 'claude'
+          ? 'Project file changes and sandboxed commands require approval'
+          : 'Project writes · Approval for escalation';
     this.model.replaceChildren(
       ...catalog.models.map(({ id, label }) => new Option(label, id)),
     );

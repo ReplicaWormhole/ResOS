@@ -1,6 +1,6 @@
 # ResOS
 
-ResOS is a desktop research IDE and Codex notebook in development. Open an
+ResOS is a desktop research IDE with a project chat notebook. Open an
 existing folder as a project, edit its files in tabs, and keep a separate chat
 history for each project.
 
@@ -76,21 +76,32 @@ Its conversation history stays accessible while the folder is missing.
 Choose the new location to re-enable the editor and sending. The notebook
 is saved beside the registry in the app data directory as `notebook.json`.
 
-## Choose Codex settings
+## Choose a harness and model
 
-Use **Mode**, **Model**, and **Reasoning effort** in the composer. ResOS lists
-the text models and effort levels reported by your signed-in Codex CLI.
-**Refresh models** updates the list. Effort controls how the model reasons.
-The context preview separately shows the amount of notebook input.
+Use **Harness**, **Mode**, **Model**, and **Reasoning effort** in the
+composer. **Refresh models** updates the catalog for the selected harness.
+Effort controls how the model reasons. The context preview separately shows
+the amount of notebook input. The current catalogs expose effort levels
+for supported models.
 
-**Ask** starts with read-only tools and disables escalation. **Agent**
+With Codex, **Ask** starts with read-only tools and disables escalation. **Agent**
 allows writes in the project and asks before escalating permissions. Scoped
 runs disable Codex hooks, external MCP servers, plugins, apps, and web
 search for the run. The selected mode and permission summary appear next
 to the composer.
 
+To use Claude Code, install Claude Code 2.1.248 or newer and sign in with
+`claude auth login`. ResOS looks on `PATH` and in `~/.local/bin`. Set
+`RESOS_CLAUDE_BIN` to an absolute path to override discovery. **Ask** offers
+project reads. **Agent** asks before creating or replacing a file or running
+a command. Approved commands start in a read-only project snapshot and
+can write to private `/tmp` scratch space. Bubblewrap isolates the command
+from your home directory and network. The snapshot excludes symlinks,
+special files, and Git metadata, and accepts up to 30,000 entries and
+512 MiB. Each command has a 60-second limit.
+
 ResOS saves the requested settings at queue time and records the model and
-effort Codex confirms. **Retry response** keeps those choices. If a saved
+effort the harness confirms. **Retry response** keeps those choices. If a saved
 model becomes unavailable, choose an available setting and use **Run with
 current settings** on the failed attempt to submit the same saved input.
 
@@ -107,7 +118,7 @@ Open **Message actions** and then **Run context** on a reply to inspect
 the saved input and omitted revision IDs. A retry keeps the original
 input and lookup choice when they were recorded.
 
-In Codex mode, **Allow notebook lookup** lets one response search saved
+**Allow notebook lookup** lets one response search saved
 message revisions across chats in the same project. It starts off for
 each new send. Lookup results are bounded and recorded separately from
 the initial input. The lookup tool excludes notes and returns excerpts
