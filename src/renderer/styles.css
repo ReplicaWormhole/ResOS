@@ -21,11 +21,14 @@
 body {
   display: grid;
   grid-template-columns: 220px 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   margin: 0;
 }
 
 aside {
+  min-width: 0;
+  overflow: auto;
   background: var(--rail);
   border-right: 1px solid var(--border);
   padding: 24px 16px;
@@ -77,6 +80,7 @@ li + li {
 
 main {
   min-width: 0;
+  overflow: auto;
   padding: 32px;
   overflow-wrap: anywhere;
 }
@@ -92,4 +96,138 @@ p {
 
 [role='alert'] {
   margin-top: 24px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+#files {
+  margin-top: 26px;
+}
+
+.section-heading,
+.pane-heading,
+#editor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.section-heading,
+.pane-heading {
+  justify-content: space-between;
+}
+
+.section-heading h2,
+.pane-heading h2 {
+  margin: 0;
+}
+
+.section-heading button,
+.pane-heading button,
+#editor-actions button {
+  width: auto;
+  font-size: 0.8rem;
+  padding: 4px 7px;
+}
+
+.file-list {
+  margin: 6px 0 0;
+}
+
+.file-list .file-list {
+  padding-left: 12px;
+}
+
+.file-list li + li {
+  margin-top: 2px;
+}
+
+.file-list summary,
+.file-list .file-button {
+  cursor: pointer;
+  font-size: 0.87rem;
+  overflow-wrap: anywhere;
+  padding: 4px;
+}
+
+.file-list .file-button {
+  border: 0;
+}
+
+#workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 20px;
+}
+
+#workspace[data-expanded='editor'],
+#workspace[data-expanded='chat'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#workspace[data-expanded='editor'] #chat-pane,
+#workspace[data-expanded='chat'] #editor-pane {
+  display: none;
+}
+
+#editor-pane,
+#chat-pane {
+  min-width: 0;
+  min-height: 55vh;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#file-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+#file-tabs button {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#file-tabs button[aria-selected='true'] {
+  background: var(--active);
+}
+
+#file-tabs button.dirty::after {
+  content: ' ●';
+}
+
+#file-tabs button.disk-changed {
+  border-color: #b46b21;
+}
+
+#editor-status {
+  min-height: 1.3em;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+#text-editor .cm-editor {
+  height: min(57vh, 640px);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color-scheme: light;
+  color: #172222;
+  background: #fff;
+}
+
+#text-editor .cm-panel input,
+#text-editor .cm-panel button {
+  color: #172222;
+  width: auto;
 }

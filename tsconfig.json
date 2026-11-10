@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "ES2024",
     "module": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmitOnError": true,
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2024", "DOM"],
     "types": ["node"],
     "skipLibCheck": true
   },

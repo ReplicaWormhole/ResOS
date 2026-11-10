@@ -8,9 +8,15 @@ import {
   session,
 } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ProjectRegistry } from '../projects/project-registry.js';
+import {
+  listDirectory,
+  readFile,
+  saveFile,
+} from '../workspace/workspace-files.js';
 
 const homeUrl = 'resos://app/index.html';
 const assets = new Set(['/index.html', '/styles.css', '/renderer.js']);
@@ -19,7 +25,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'resos', privileges: { standard: true, secure: true } },
 ]);
 
-function registerProjectHandlers(
+function registerDesktopHandlers(
   window: BrowserWindow,
   registry: ProjectRegistry,
 ): void {
@@ -33,6 +39,32 @@ function registerProjectHandlers(
       throw new Error('Request did not originate from the ResOS window.');
     }
   }
+
+  async function workspaceRoot(
+    event: IpcMainInvokeEvent,
+    id: unknown,
+  ): Promise<string> {
+    requireAppFrame(event);
+    if (typeof id !== 'string' || id.length > 128)
+      throw new Error('Invalid project ID.');
+    const project = (await registry.list()).find((entry) => entry.id === id);
+    if (!project) throw new Error('Project not found.');
+    return project.root;
+  }
+
+  ipcMain.handle('workspace:list', async (event, id, path) =>
+    listDirectory(await workspaceRoot(event, id), path),
+  );
+  ipcMain.handle('workspace:read', async (event, id, path) =>
+    readFile(await workspaceRoot(event, id), path),
+  );
+  let pendingSave: Promise<unknown> = Promise.resolve();
+  ipcMain.handle('workspace:save', async (event, id, path, revision, text) => {
+    const root = await workspaceRoot(event, id);
+    const write = pendingSave.then(() => saveFile(root, path, revision, text));
+    pendingSave = write.catch(() => {});
+    return write;
+  });
 
   ipcMain.handle('projects:list', (event) => {
     requireAppFrame(event);
@@ -51,15 +83,24 @@ function registerProjectHandlers(
 
 async function openWindow(): Promise<void> {
   await app.whenReady();
-  protocol.handle('resos', (request) => {
+  const styleNonce = randomBytes(18).toString('base64');
+  protocol.handle('resos', async (request) => {
     const url = new URL(request.url);
     if (url.host !== 'app' || !assets.has(url.pathname)) {
       return new Response(null, { status: 404 });
     }
-    return net.fetch(
+    const response = await net.fetch(
       pathToFileURL(join(import.meta.dirname, '../renderer', url.pathname))
         .href,
     );
+    if (url.pathname !== '/index.html' || !response.ok) return response;
+    const html = (await response.text()).replaceAll(
+      '__RESOS_STYLE_NONCE__',
+      styleNonce,
+    );
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
   });
 
   session.defaultSession.setPermissionRequestHandler(
@@ -91,7 +132,7 @@ async function openWindow(): Promise<void> {
   const registry = new ProjectRegistry(
     join(app.getPath('userData'), 'projects.json'),
   );
-  registerProjectHandlers(window, registry);
+  registerDesktopHandlers(window, registry);
   await window.loadURL(homeUrl);
 }
 

@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'nonce-__RESOS_STYLE_NONCE__'; base-uri 'none'; form-action 'none'"
     />
+    <meta name="editor-style-nonce" content="__RESOS_STYLE_NONCE__" />
     <title>ResOS</title>
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="renderer.js"></script>
@@ -17,6 +18,13 @@
       <h2 id="projects-heading">Projects</h2>
       <button id="add-project" type="button" disabled>Add Project</button>
       <ul id="projects" aria-label="Saved projects"></ul>
+      <section id="files" aria-labelledby="files-heading" hidden>
+        <div class="section-heading">
+          <h2 id="files-heading">Files</h2>
+          <button id="refresh-files" type="button">Refresh tree</button>
+        </div>
+        <div id="file-tree"></div>
+      </section>
     </aside>
     <main>
       <header>
@@ -24,6 +32,38 @@
         <p id="project-root">Add a folder to start a project.</p>
       </header>
       <p id="project-error" role="alert" hidden></p>
+      <div id="workspace" hidden>
+        <section id="editor-pane" aria-label="Workspace editor">
+          <div class="pane-heading">
+            <h2>Editor</h2>
+            <button id="expand-editor" type="button" aria-pressed="false">
+              Expand editor
+            </button>
+          </div>
+          <div id="file-tabs" role="tablist" aria-label="Open files"></div>
+          <p id="editor-empty">Open a text file from the project tree.</p>
+          <div id="editor-document" role="tabpanel" hidden>
+            <div id="editor-actions">
+              <button id="save-file" type="button">Save</button>
+              <button id="find-in-file" type="button">Find</button>
+              <button id="reload-file" type="button">Reload file</button>
+              <button id="close-file" type="button">Close tab</button>
+            </div>
+            <p id="editor-status" role="status"></p>
+            <div id="text-editor"></div>
+          </div>
+          <p id="editor-error" role="alert" hidden></p>
+        </section>
+        <section id="chat-pane" aria-label="Chat">
+          <div class="pane-heading">
+            <h2>Chat</h2>
+            <button id="expand-chat" type="button" aria-pressed="false">
+              Expand chat
+            </button>
+          </div>
+          <p>Project chat arrives in M03.</p>
+        </section>
+      </div>
     </main>
   </body>
 </html>

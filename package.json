@@ -1,6 +1,6 @@
 {
   "name": "resos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A local research IDE and Codex notebook",
   "author": "ResOS contributors",
@@ -46,6 +46,7 @@
     "@types/node": "24.19.2",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
     "eslint": "10.14.0",
     "playwright-core": "1.65.0",
     "prettier": "3.9.10",
@@ -54,5 +55,15 @@
   },
   "homepage": "https://github.com/ReplicaWormhole/ResOS",
   "productName": "ResOS",
-  "desktopName": "resos.desktop"
+  "desktopName": "resos.desktop",
+  "dependencies": {
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/lang-python": "6.2.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/legacy-modes": "6.5.5",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "codemirror": "6.0.2"
+  }
 }

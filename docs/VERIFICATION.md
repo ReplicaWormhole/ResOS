@@ -29,3 +29,29 @@ Tested locally on x86-64 Ubuntu 26.04 with Node 24.14.0 and Electron 45.2.3.
 
 Build output and installed dependencies are ignored by Git. The Debian
 package is the retained local artifact.
+
+## M02 · IDE-01 and IDE-02
+
+Tested locally on x86-64 Ubuntu 26.04 with Node 24.14.0 and Electron 45.2.3.
+
+- `npm run check` passed formatting, linting, strict typechecking, the renderer
+  bundle, and all eight unit tests. Tests cover workspace confinement, stale
+  saves, invalid or oversized text, ordinary file modes, and preservation of
+  the UTF-8 BOM and mixed line endings.
+- `xvfb-run -a npm run test:desktop` passed both desktop tests. The editor
+  test covers nested file navigation, keyboard tab switching, a selected
+  search match, TeX/Markdown/Python highlighting, unsaved buffers across
+  projects, keyboard saves, clean refresh, dirty conflicts, explicit reload,
+  and both pane layouts.
+- `npm run package:linux` produced `resos_0.2.0_amd64.deb`.
+  `desktop-file-validate` and both desktop tests passed on the extracted
+  package. The restart test created projects with the M01 package and
+  opened that profile in M02, retaining both stable IDs. Hosted CI is pending.
+- `npm audit --omit=dev` reported zero production dependency advisories.
+  CodeMirror is bundled into the renderer, with dependency licenses present
+  in the application archive. esbuild is used for the renderer build.
+
+File saves use a content revision check immediately before an atomic rename.
+There is a small race if an unrelated writer changes the file between the
+final check and the rename. Tabs and drafts live in memory while the
+application is open.
