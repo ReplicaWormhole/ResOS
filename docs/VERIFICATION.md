@@ -78,3 +78,26 @@ Tested locally on x86-64 Ubuntu 26.04 with Node 24.14.0 and Electron 45.2.3.
 
 Notebook storage rewrites a local JSON snapshot for each streamed chunk.
 Chat drafts live in memory while the application is open.
+
+## M04 · JOB-01, JOB-02, and CTX-01
+
+- `npm run check` passed all 14 unit tests. Fixtures verify fresh stdio
+  initialization, explicit sandbox settings, a file-change approval and
+  foreign notification filtering. Notebook tests cover FIFO queueing across
+  conversations, deduplication, cross-project approval isolation, stop,
+  restart recovery, and retry with saved context and relink confirmation.
+- `npm run package:linux` built `resos_0.4.0_amd64.deb`. The desktop file
+  passed validation and all three deterministic desktop tests passed against
+  the extracted package.
+- `node scripts/codex-smoke.mjs` and the packaged
+  `xvfb-run -a node scripts/desktop-codex-smoke.mjs` returned the expected
+  markers using signed-in Codex CLI 0.167.0. The desktop check also verified
+  that the saved working directory, thread ID, and turn ID match the run.
+  Real-model checks used disposable fixtures. The live checks did not
+  request any tool approvals.
+
+Protocol fields were checked against the installed CLI's generated bindings
+and the [official app-server documentation](https://learn.chatgpt.com/docs/app-server).
+The desktop client handles concrete command, file-change, and permission
+approval requests. Other interactive app-server requests receive an
+unsupported-method error.

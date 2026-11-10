@@ -14,6 +14,8 @@ import { pathToFileURL } from 'node:url';
 import { ChatService } from '../jobs/chat-service.js';
 import { NotebookStore } from '../notebook/notebook-store.js';
 import { isAvailable, ProjectRegistry } from '../projects/project-registry.js';
+import { CodexRuntime } from '../runtime/codex/codex-runtime.js';
+import { findCodex } from '../runtime/codex/find-codex.js';
 import { demoRuntime } from '../runtime/demo-runtime.js';
 import type { Project } from '../shared/desktop-api.js';
 import {
@@ -33,6 +35,7 @@ function registerDesktopHandlers(
   window: BrowserWindow,
   registry: ProjectRegistry,
   chats: ChatService,
+  runtimeMode: 'demo' | 'codex',
 ): void {
   function requireAppFrame(event: IpcMainInvokeEvent): void {
     const frame = event.senderFrame;
@@ -112,13 +115,59 @@ function registerDesktopHandlers(
   ipcMain.handle('chats:create', async (event, id) =>
     chats.create((await projectFor(event, id)).id),
   );
-  ipcMain.handle('chats:send', (event, id, chatId, question) =>
+  ipcMain.handle('chats:send', (event, id, chatId, question, requestId) =>
     changeWorkspace(async () => {
       if (typeof chatId !== 'string' || chatId.length > 128)
         throw new Error('Invalid chat ID.');
-      await chats.send(await availableProject(event, id), chatId, question);
+      await chats.send(
+        await availableProject(event, id),
+        chatId,
+        question,
+        requestId,
+      );
     }),
   );
+
+  ipcMain.handle('chats:runtime', (event) => {
+    requireAppFrame(event);
+    return runtimeMode;
+  });
+  ipcMain.handle('chats:stop', async (event, id, jobId) => {
+    if (typeof jobId !== 'string' || jobId.length > 128)
+      throw new Error('Invalid job ID.');
+    await chats.stop((await projectFor(event, id)).id, jobId);
+  });
+  ipcMain.handle('chats:retry', (event, id, chatId, jobId, confirmRelink) =>
+    changeWorkspace(async () => {
+      if (
+        typeof chatId !== 'string' ||
+        chatId.length > 128 ||
+        typeof jobId !== 'string' ||
+        jobId.length > 128 ||
+        typeof confirmRelink !== 'boolean'
+      )
+        throw new Error('Invalid retry.');
+      await chats.retry(
+        await availableProject(event, id),
+        chatId,
+        jobId,
+        confirmRelink,
+      );
+    }),
+  );
+  ipcMain.handle('chats:approvals', async (event, id) =>
+    chats.listApprovals((await projectFor(event, id)).id),
+  );
+  ipcMain.handle('chats:approval', async (event, id, approvalId, accept) => {
+    if (
+      typeof approvalId !== 'string' ||
+      approvalId.length > 128 ||
+      typeof accept !== 'boolean'
+    ) {
+      throw new Error('Invalid approval decision.');
+    }
+    chats.decideApproval((await projectFor(event, id)).id, approvalId, accept);
+  });
 
   ipcMain.handle('projects:list', (event) => {
     requireAppFrame(event);
@@ -190,10 +239,23 @@ async function openWindow(): Promise<void> {
     join(app.getPath('userData'), 'notebook.json'),
   );
   await notebook.recover();
-  const chats = new ChatService(notebook, demoRuntime, (id) => {
-    if (!window.isDestroyed()) window.webContents.send('chats:changed', id);
+  const runtimeMode = process.env.RESOS_RUNTIME === 'demo' ? 'demo' : 'codex';
+  const codex = new CodexRuntime(
+    runtimeMode === 'demo' ? 'codex' : await findCodex(),
+  );
+  const chats = new ChatService(
+    notebook,
+    runtimeMode === 'demo' ? demoRuntime : codex,
+    (id) => {
+      if (!window.isDestroyed()) window.webContents.send('chats:changed', id);
+    },
+    runtimeMode,
+  );
+  app.once('before-quit', () => {
+    chats.close();
+    codex.close();
   });
-  registerDesktopHandlers(window, registry, chats);
+  registerDesktopHandlers(window, registry, chats, runtimeMode);
   await window.loadURL(homeUrl);
 }
 

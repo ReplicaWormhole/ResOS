@@ -2,8 +2,8 @@
 
 The [spec](SPEC.md) owns requirements and acceptance criteria. This roadmap
 sets their order. Each milestone closes with its checks and a short verification
-record. See [verification](VERIFICATION.md) for M01 through M03.
-M04 is the next implementation milestone.
+record. See [verification](VERIFICATION.md) for M01 through M04.
+M05 is the next implementation milestone.
 
 ```mermaid
 flowchart TD

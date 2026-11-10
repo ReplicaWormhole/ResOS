@@ -306,3 +306,21 @@ p {
 #chat-composer button {
   justify-self: start;
 }
+
+#chat-transcript article pre,
+#chat-approvals article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#chat-approvals article {
+  border: 1px solid var(--border);
+  padding: 8px;
+  margin: 8px 0;
+}
+
+#chat-transcript article > button,
+#chat-approvals article > button {
+  width: auto;
+  margin: 4px 4px 4px 0;
+}

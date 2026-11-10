@@ -40,15 +40,16 @@ test('persists partial replies and retains the project, chat and cwd of parallel
   const chatA = await service.create(a.id);
   const chatB = await service.create(b.id);
   await assert.rejects(
-    service.send(a, chatB.id, 'misrouted'),
+    service.send(a, chatB.id, 'misrouted', 'wrong'),
     /not found in this project/,
   );
-  await service.send(a, chatA.id, 'alpha');
+  await service.send(a, chatA.id, 'alpha', 'a1');
+  await service.send(a, chatA.id, 'alpha', 'a1');
   await assert.rejects(
-    service.send(a, chatA.id, 'second response'),
-    /already has a response/,
+    service.send(a, chatA.id, 'second response', 'a1'),
+    /already used for different input/,
   );
-  await service.send(b, chatB.id, 'beta');
+  await service.send(b, chatB.id, 'beta', 'b1');
 
   try {
     await until(async () => {
@@ -63,12 +64,14 @@ test('persists partial replies and retains the project, chat and cwd of parallel
         conversationId: chatA.id,
         question: 'alpha',
         cwd: a.root,
+        context: [],
       },
       {
         projectId: 'b',
         conversationId: chatB.id,
         question: 'beta',
         cwd: b.root,
+        context: [],
       },
     ]);
   } finally {
@@ -88,7 +91,7 @@ test('persists partial replies and retains the project, chat and cwd of parallel
   assert.equal((await stat(path)).mode & 0o777, 0o600);
 });
 
-test('recovery marks running attempts interrupted and retains the partial text', async (t) => {
+test('recovery marks queued and running attempts interrupted and retains partial text', async (t) => {
   const path = await fixture(t);
   const store = new NotebookStore(path);
   await store.change((chats) =>
@@ -107,6 +110,7 @@ test('recovery marks running attempts interrupted and retains the partial text',
               status: 'running',
               answer: 'partial',
             },
+            { id: 'queued', cwd: '/workspace', status: 'queued', answer: '' },
           ],
         },
       ],
@@ -121,6 +125,7 @@ test('recovery marks running attempts interrupted and retains the partial text',
     status: 'interrupted',
     answer: 'partial',
   });
+  assert.equal(chat.turns[0].jobs[1].status, 'interrupted');
 });
 
 test('rejects an unsupported snapshot without overwriting it', async (t) => {
@@ -134,4 +139,76 @@ test('rejects an unsupported snapshot without overwriting it', async (t) => {
     /unsupported format/,
   );
   assert.equal(await readFile(path, 'utf8'), data);
+});
+
+test('queues in submission order, isolates approvals, stops a partial turn, and retries the original input', async (t) => {
+  const path = await fixture(t);
+  const store = new NotebookStore(path);
+  const seen = [];
+  const runtime = {
+    async *stream(request, controls) {
+      seen.push(request);
+      if (request.question === 'pending' && seen.length === 1) {
+        yield 'partial';
+        const approved = await controls.approve({
+          kind: 'Command execution',
+          detail: 'fixture action',
+        });
+        controls.signal.throwIfAborted();
+        yield approved ? 'approved' : 'declined';
+        return;
+      }
+      yield 'answer ' + request.question;
+    },
+  };
+  const service = new ChatService(store, runtime, () => {});
+  const a = { id: 'a', root: '/workspace/a', name: 'A' };
+  const first = await service.create(a.id);
+  const second = await service.create(a.id);
+  await service.send(a, first.id, 'pending', 'first');
+  await until(() => service.listApprovals(a.id).length === 1);
+  const [approval] = service.listApprovals(a.id);
+  assert.equal(approval.chatId, first.id);
+  assert.throws(
+    () => service.decideApproval('b', approval.id, true),
+    /no longer pending/,
+  );
+
+  await service.send(a, second.id, 'runs next', 'second');
+  await service.send(a, first.id, 'runs last', 'third');
+  await service.send(a, second.id, 'must not run', 'cancelled');
+  const before = await service.list(a.id);
+  assert.equal(before[0].turns[0].jobs[0].answer, 'partial');
+  assert.equal(before[0].turns[1].jobs[0].status, 'queued');
+  await service.stop(a.id, before[1].turns[1].jobs[0].id);
+  await service.stop(a.id, approval.jobId);
+  await until(() => !service.isRunning(a.id));
+  assert.deepEqual(
+    seen.map((request) => request.question),
+    ['pending', 'runs next', 'runs last'],
+  );
+  assert.equal(service.listApprovals(a.id).length, 0);
+
+  const moved = { ...a, root: '/workspace/moved' };
+  await assert.rejects(
+    service.retry(moved, first.id, approval.jobId, false),
+    /Confirm the new project folder/,
+  );
+  await service.retry(moved, first.id, approval.jobId, true);
+  await until(() => !service.isRunning(a.id));
+  const [chat] = await service.list(a.id);
+  assert.equal(chat.turns.length, 2);
+  assert.equal(chat.turns[0].jobs[0].status, 'interrupted');
+  assert.equal(chat.turns[0].jobs[0].answer, 'partial');
+  assert.equal(chat.turns[0].jobs[1].retryOf, approval.jobId);
+  assert.equal(chat.turns[0].jobs[1].cwd, moved.root);
+  assert.equal(chat.turns[0].jobs[1].status, 'complete');
+  assert.deepEqual(seen.at(-1).context, []);
+  await service.send(moved, first.id, 'follow-up', 'followup');
+  await until(() => !service.isRunning(a.id));
+  assert.deepEqual(
+    seen.at(-1).context.map((entry) => entry.answer),
+    ['answer pending', 'answer runs last'],
+  );
+  assert.equal(seen.at(-1).context[0].jobId, chat.turns[0].jobs[1].id);
 });

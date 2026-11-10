@@ -67,14 +67,19 @@
               Expand chat
             </button>
           </div>
-          <p class="chat-demo">
-            Demo runtime · Responses are generated locally.
-          </p>
+          <p id="chat-runtime" class="chat-demo"></p>
           <div class="chat-toolbar">
             <label for="chat-list">Conversations</label>
             <select id="chat-list"></select>
             <button id="new-chat" type="button">New chat</button>
           </div>
+          <details class="chat-context">
+            <summary>Search project chats</summary>
+            <label for="chat-search">Search saved context</label>
+            <input id="chat-search" type="search" />
+            <ul id="chat-search-results"></ul>
+          </details>
+          <div id="chat-approvals"></div>
           <div
             id="chat-transcript"
             aria-label="Conversation history"

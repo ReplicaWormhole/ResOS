@@ -32,7 +32,7 @@ test(
         executablePath: binary,
         args: binary ? [] : ['.'],
         chromiumSandbox: true,
-        env: { ...process.env, XDG_CONFIG_HOME: config },
+        env: { ...process.env, RESOS_RUNTIME: 'demo', XDG_CONFIG_HOME: config },
         timeout: 15_000,
       });
 
@@ -124,7 +124,11 @@ test(
       executablePath,
       args: executablePath ? [] : ['.'],
       chromiumSandbox: true,
-      env: { ...process.env, XDG_CONFIG_HOME: join(root, 'config') },
+      env: {
+        ...process.env,
+        RESOS_RUNTIME: 'demo',
+        XDG_CONFIG_HOME: join(root, 'config'),
+      },
       timeout: 15_000,
     });
     try {
@@ -153,7 +157,7 @@ test(
         .locator('summary')
         .getByText('notes', { exact: true })
         .waitFor();
-      await window.locator('summary').press('Enter');
+      await window.locator('#file-tree summary').press('Enter');
       await window
         .getByRole('button', { name: 'draft.tex', exact: true })
         .press('Enter');
@@ -298,7 +302,11 @@ test(
         executablePath,
         args: executablePath ? [] : ['.'],
         chromiumSandbox: true,
-        env: { ...process.env, XDG_CONFIG_HOME: join(root, 'config') },
+        env: {
+          ...process.env,
+          RESOS_RUNTIME: 'demo',
+          XDG_CONFIG_HOME: join(root, 'config'),
+        },
         timeout: 15_000,
       });
 
@@ -365,7 +373,8 @@ test(
       assert.equal(await send.isDisabled(), true);
       await assert.rejects(
         window.evaluate(
-          ({ id, chat }) => window.resos.sendChat(id, chat, 'Blocked'),
+          ({ id, chat }) =>
+            window.resos.sendChat(id, chat, 'Blocked', 'blocked-test'),
           { id: original.id, chat: originalChatId },
         ),
       );

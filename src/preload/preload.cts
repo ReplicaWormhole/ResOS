@@ -8,8 +8,15 @@ const api: DesktopApi = {
   locateProject: (id) => ipcRenderer.invoke('projects:locate', id),
   listChats: (id) => ipcRenderer.invoke('chats:list', id),
   createChat: (id) => ipcRenderer.invoke('chats:create', id),
-  sendChat: (id, chatId, question) =>
-    ipcRenderer.invoke('chats:send', id, chatId, question),
+  sendChat: (id, chatId, question, requestId) =>
+    ipcRenderer.invoke('chats:send', id, chatId, question, requestId),
+  stopChat: (id, jobId) => ipcRenderer.invoke('chats:stop', id, jobId),
+  retryChat: (id, chatId, jobId, confirm) =>
+    ipcRenderer.invoke('chats:retry', id, chatId, jobId, confirm),
+  listApprovals: (id) => ipcRenderer.invoke('chats:approvals', id),
+  decideApproval: (id, approvalId, accept) =>
+    ipcRenderer.invoke('chats:approval', id, approvalId, accept),
+  chatRuntime: () => ipcRenderer.invoke('chats:runtime'),
   onChatChanged: (listener) => {
     const receive = (_event: unknown, projectId: string) => listener(projectId);
     ipcRenderer.on('chats:changed', receive);

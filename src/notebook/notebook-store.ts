@@ -21,7 +21,30 @@ function isJob(value: unknown): value is ChatJob {
     typeof value.cwd === 'string' &&
     typeof value.answer === 'string' &&
     (value.error === undefined || typeof value.error === 'string') &&
-    (value.status === 'running' ||
+    ['startedAt', 'finishedAt', 'threadId', 'turnId'].every(
+      (field) => value[field] === undefined || typeof value[field] === 'string',
+    ) &&
+    (value.runtime === undefined ||
+      value.runtime === 'demo' ||
+      value.runtime === 'codex') &&
+    (value.requestId === undefined || typeof value.requestId === 'string') &&
+    (value.queueOrder === undefined ||
+      (typeof value.queueOrder === 'number' &&
+        Number.isSafeInteger(value.queueOrder))) &&
+    (value.retryOf === undefined || typeof value.retryOf === 'string') &&
+    (value.context === undefined ||
+      (Array.isArray(value.context) &&
+        value.context.every(
+          (entry) =>
+            isRecord(entry) &&
+            typeof entry.conversationId === 'string' &&
+            typeof entry.turnId === 'string' &&
+            typeof entry.question === 'string' &&
+            (entry.answer === undefined || typeof entry.answer === 'string') &&
+            (entry.jobId === undefined || typeof entry.jobId === 'string'),
+        ))) &&
+    (value.status === 'queued' ||
+      value.status === 'running' ||
       value.status === 'complete' ||
       value.status === 'interrupted' ||
       value.status === 'failed')
@@ -97,7 +120,9 @@ export class NotebookStore {
     if (
       !conversations.some((chat) =>
         chat.turns.some((turn) =>
-          turn.jobs.some((job) => job.status === 'running'),
+          turn.jobs.some(
+            (job) => job.status === 'running' || job.status === 'queued',
+          ),
         ),
       )
     )
@@ -106,7 +131,8 @@ export class NotebookStore {
       for (const chat of chats) {
         for (const turn of chat.turns) {
           for (const job of turn.jobs) {
-            if (job.status === 'running') job.status = 'interrupted';
+            if (job.status === 'running' || job.status === 'queued')
+              job.status = 'interrupted';
           }
         }
       }

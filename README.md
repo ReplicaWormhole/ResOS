@@ -16,7 +16,7 @@ npm start
 Choose **Add Project**, then select a folder. ResOS leaves your files where
 they are. The project list is saved under Electron's user-data directory as
 `projects.json`. On Linux that directory defaults to `~/.config/ResOS`.
-This build requires no Codex installation or model credentials.
+The editor and saved notebook are available without a live Codex connection.
 
 ## Workspace editor
 
@@ -41,10 +41,24 @@ XDG_CONFIG_HOME="$HOME/.config/resos-dev" npm start
 
 ## Project chat
 
-Choose **New chat** and send a message to try the local demo runtime. The
-reply streams in the chat pane. Conversations and saved replies survive a
-restart. Each chat keeps its own draft while the app is open. Live Codex
-execution is scheduled for M04.
+Install the Codex CLI and sign in with `codex login`. ResOS looks for Codex on
+`PATH`, in `~/.local/bin`, and in local nvm installations. Set
+`RESOS_CODEX_BIN` to an executable path to override discovery.
+
+Choose **New chat** and send a message. ResOS starts a fresh Codex thread per
+attempt and streams the reply. The prompt and saved context go to the model
+service configured in your Codex installation. Requests to escalate command,
+file, or permission scope appear in the originating project for your decision.
+
+Use **Stop response** to cancel a queued or running attempt and **Retry
+response** to run the same question again. **Run context** shows the saved
+input, working directory, and execution record. **Search project chats**
+finds text in the current project's saved conversations. Drafts stay separate
+while the app is open, and saved questions and replies survive a restart.
+
+Use `RESOS_RUNTIME=demo npm start` for a local demo without model calls. An
+opt-in live check is `npm run build && xvfb-run -a node scripts/desktop-codex-smoke.mjs`.
+The check uses a disposable workspace and user-data directory.
 
 If a project folder moves, open that project and choose **Locate folder**.
 Its conversation history stays accessible while the folder is missing.
@@ -62,13 +76,13 @@ npm run check
 npm run package:linux
 ```
 
-Install `release/resos_0.3.0_amd64.deb` through your package manager and
+Install `release/resos_0.4.0_amd64.deb` through your package manager and
 launch **ResOS** from the application menu. To exercise the packaged app in
 an isolated profile without installing it system-wide:
 
 ```sh
 package_root="$(mktemp -d)"
-dpkg-deb -x release/resos_0.3.0_amd64.deb "$package_root"
+dpkg-deb -x release/resos_0.4.0_amd64.deb "$package_root"
 desktop-file-validate "$package_root/usr/share/applications/resos.desktop"
 RESOS_EXECUTABLE="$package_root/opt/ResOS/resos" xvfb-run -a npm run test:desktop
 ```

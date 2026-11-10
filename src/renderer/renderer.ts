@@ -68,7 +68,7 @@ function selectProject(project: Project): void {
     files.hidden = true;
     missing.hidden = true;
     editor.hide();
-    chat.show(project.id);
+    chat.show(project.id, project.root);
     chat.setAvailable(false);
     workspace.dataset.available = 'checking';
   }
