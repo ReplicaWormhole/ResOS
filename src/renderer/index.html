@@ -51,6 +51,9 @@
           <div id="editor-document" role="tabpanel" hidden>
             <div id="editor-actions">
               <button id="save-file" type="button">Save</button>
+              <button id="ask-file-selection" type="button" disabled>
+                Ask about file selection
+              </button>
               <button id="find-in-file" type="button">Find</button>
               <button id="reload-file" type="button">Reload file</button>
               <button id="close-file" type="button">Close tab</button>
@@ -87,6 +90,7 @@
           ></div>
           <p id="chat-error" role="alert" hidden></p>
           <form id="chat-composer">
+            <div id="draft-excerpts"></div>
             <label for="chat-input">Message</label>
             <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
             <button id="chat-send" type="submit">Send</button>

@@ -280,3 +280,72 @@ test('pins a repeated passage and preserves revision history, notes, and ancestr
   assert.equal(discussion.source.start, start);
   assert.equal(discussion.source.revisionId, job.id);
 });
+
+test('file excerpts stay with the original question, retries, and later context', async (t) => {
+  const path = await fixture(t);
+  const { bufferFingerprint, matchesExcerpt } =
+    await import('../dist/shared/file-excerpt.js');
+  const text = '\\alpha';
+  const excerpt = {
+    projectId: 'project',
+    path: 'draft.tex',
+    text,
+    start: 0,
+    end: text.length,
+    startLine: 1,
+    endLine: 1,
+    capturedAt: '2026-11-10T12:00:00Z',
+    unsaved: true,
+    fingerprint: await bufferFingerprint(text + '\n'),
+  };
+  assert.equal(await matchesExcerpt(excerpt, text + '\n'), true);
+  assert.equal(
+    await matchesExcerpt(excerpt, text + '\nchanged somewhere else'),
+    false,
+  );
+  assert.equal(await matchesExcerpt(excerpt, 'moved: ' + text), false);
+
+  const requests = [];
+  const service = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream(request) {
+        requests.push(request);
+        if (requests.length === 1) throw new Error('fixture failure');
+        yield 'answered';
+      },
+    },
+    () => {},
+  );
+  const project = { id: 'project', root: '/workspace', name: 'Project' };
+  const chat = await service.create(project.id);
+  await assert.rejects(
+    service.send(project, chat.id, 'Question', 'invalid', [
+      { ...excerpt, projectId: 'other' },
+    ]),
+    /Invalid file excerpt/,
+  );
+  await assert.rejects(
+    service.send(project, chat.id, 'Question', 'invalid', [
+      { ...excerpt, path: '../outside' },
+    ]),
+    /Invalid file excerpt/,
+  );
+  await service.send(project, chat.id, 'Question', 'excerpt', [excerpt]);
+  await until(() => !service.isRunning(project.id));
+  const [saved] = await service.list(project.id);
+  await assert.rejects(
+    service.send(project, chat.id, 'Question', 'excerpt', []),
+    /different input/,
+  );
+  await service.retry(project, chat.id, saved.turns[0].jobs[0].id, false);
+  await until(() => !service.isRunning(project.id));
+  assert.deepEqual(requests[0].excerpts, [excerpt]);
+  assert.deepEqual(requests[1].excerpts, [excerpt]);
+
+  await service.send(project, chat.id, 'Follow-up', 'followup');
+  await until(() => !service.isRunning(project.id));
+  assert.deepEqual(requests[2].context[0].excerpts, [excerpt]);
+  const [reopened] = await new NotebookStore(path).list(project.id);
+  assert.deepEqual(reopened.turns[0].excerpts, [excerpt]);
+});

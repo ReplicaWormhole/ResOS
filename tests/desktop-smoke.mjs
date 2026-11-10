@@ -598,3 +598,114 @@ test(
     }
   },
 );
+
+test(
+  'file excerpts preserve unsaved TeX and only jump to a matching source',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-excerpt-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'Project');
+    await mkdir(projectRoot);
+    const path = join(projectRoot, 'draft.tex');
+    await writeFile(path, 'Saved line\n');
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = () =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: {
+          ...process.env,
+          RESOS_RUNTIME: 'demo',
+          XDG_CONFIG_HOME: join(root, 'config'),
+        },
+        timeout: 15_000,
+      });
+    const app = await launch();
+    const tex = '\\beta + 1';
+    try {
+      const window = await app.firstWindow();
+      await app.evaluate(({ dialog }, workspace) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [workspace],
+        });
+      }, projectRoot);
+      await window.getByRole('button', { name: 'Add Project' }).click();
+      await window.getByRole('button', { name: 'draft.tex' }).click();
+      const contents = window.getByRole('textbox', { name: 'File contents' });
+      await contents.press('Control+End');
+      await contents.pressSequentially(tex, { delay: 12 });
+      assert.equal(
+        await contents.locator('.cm-line').last().textContent(),
+        tex,
+      );
+      await contents.press('Shift+Home');
+      const attach = window.getByRole('button', {
+        name: 'Ask about file selection',
+      });
+      await attach.click();
+      const draft = window.locator('#draft-excerpts');
+      await draft.getByText('draft.tex:2 · Unsaved buffer').waitFor();
+      assert.equal(await draft.locator('pre').textContent(), tex);
+      await window
+        .getByRole('textbox', { name: 'Message' })
+        .fill('What does this excerpt mean?');
+      await window.getByRole('button', { name: 'Send', exact: true }).click();
+      const transcript = window.locator('#chat-transcript');
+      await transcript.locator('[data-status=complete]').waitFor();
+      const jump = transcript.getByRole('button', {
+        name: 'Jump to file excerpt',
+      });
+      await jump.waitFor();
+      assert.equal(await readFile(path, 'utf8'), 'Saved line\n');
+      await contents.press('Control+Home');
+      await jump.click();
+      assert.equal(
+        await contents.evaluate((node) =>
+          node.ownerDocument.getSelection().toString(),
+        ),
+        tex,
+      );
+      await contents.press('Control+Home');
+      await window.keyboard.insertText('Changed ');
+      await jump.waitFor({ state: 'hidden' });
+      await rename(path, join(projectRoot, 'moved.tex'));
+    } finally {
+      await app.close();
+    }
+    const reopened = await launch();
+    try {
+      const window = await reopened.firstWindow();
+      const transcript = window.locator('#chat-transcript');
+      await transcript.getByText('draft.tex:2 · Unsaved buffer').waitFor();
+      assert.equal(
+        await transcript.locator('.file-excerpt pre').textContent(),
+        tex,
+      );
+      assert.equal(
+        await transcript
+          .getByRole('button', { name: 'Jump to file excerpt' })
+          .count(),
+        0,
+      );
+      await window
+        .getByRole('textbox', { name: 'Message' })
+        .fill('Use the earlier excerpt');
+      await window.getByRole('button', { name: 'Send', exact: true }).click();
+      await transcript.locator('[data-status=complete]').nth(1).waitFor();
+      const [project] = await window.evaluate(() =>
+        window.resos.listProjects(),
+      );
+      const [chat] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        project.id,
+      );
+      assert.equal(chat.turns[1].jobs[0].context[0].excerpts[0].text, tex);
+      assert.equal(chat.turns[0].excerpts[0].unsaved, true);
+    } finally {
+      await reopened.close();
+    }
+  },
+);

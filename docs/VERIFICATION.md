@@ -116,3 +116,20 @@ unsupported-method error.
   is rendered from parsed nodes, and KaTeX uses native MathML with trust
   disabled and bounded macro expansion. A Markdown text run that cannot be
   aligned to source offsets after parsing is treated as one source unit.
+
+## M06 · FILE-01 and FILE-02
+
+- `npm run check` passed all 16 unit tests. The new tests verify project
+  boundaries, exact buffer identity and range, immutable attachments,
+  idempotent sends, retry, and use in later context. The stdio fixture
+  also verifies that the Codex turn includes the captured excerpt and
+  unsaved-buffer flag as reference data.
+- `npm run package:linux` built `resos_0.6.0_amd64.deb`. The desktop file
+  passed validation and all five desktop tests passed on the extracted
+  package. The excerpt check captured unsaved TeX, jumped to the matching
+  live selection, hid the jump after an edit, moved the file, and confirmed
+  the saved excerpt was still available after reopening and on a later turn.
+
+The fingerprint covers the full visible text buffer, using the editor's
+normalized line endings. External changes are rechecked periodically and
+every jump validates the range again before selecting it.

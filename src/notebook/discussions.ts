@@ -110,6 +110,7 @@ function focalContext(
     turnId: turn.id,
     question: question.text,
     questionRevisionId: question.id,
+    ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
     ...('answer' in message
       ? {
           jobId: message.id,

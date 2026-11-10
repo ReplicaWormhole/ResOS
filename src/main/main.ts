@@ -115,17 +115,20 @@ function registerDesktopHandlers(
   ipcMain.handle('chats:create', async (event, id) =>
     chats.create((await projectFor(event, id)).id),
   );
-  ipcMain.handle('chats:send', (event, id, chatId, question, requestId) =>
-    changeWorkspace(async () => {
-      if (typeof chatId !== 'string' || chatId.length > 128)
-        throw new Error('Invalid chat ID.');
-      await chats.send(
-        await availableProject(event, id),
-        chatId,
-        question,
-        requestId,
-      );
-    }),
+  ipcMain.handle(
+    'chats:send',
+    (event, id, chatId, question, requestId, excerpts) =>
+      changeWorkspace(async () => {
+        if (typeof chatId !== 'string' || chatId.length > 128)
+          throw new Error('Invalid chat ID.');
+        await chats.send(
+          await availableProject(event, id),
+          chatId,
+          question,
+          requestId,
+          excerpts,
+        );
+      }),
   );
 
   ipcMain.handle('chats:revise', async (event, id, address, text) =>

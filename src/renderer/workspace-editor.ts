@@ -1,3 +1,9 @@
+import {
+  bufferFingerprint,
+  matchesExcerpt,
+  MAX_EXCERPT_CHARS,
+} from '../shared/file-excerpt.js';
+import type { FileExcerpt } from '../shared/notebook-api.js';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { StreamLanguage } from '@codemirror/language';
@@ -59,6 +65,10 @@ export class WorkspaceEditor {
     document.querySelector<HTMLElement>('#editor-error')!;
   private readonly saveButton =
     document.querySelector<HTMLButtonElement>('#save-file')!;
+  private readonly captureButton = document.querySelector<HTMLButtonElement>(
+    '#ask-file-selection',
+  )!;
+  private changed: () => void = () => {};
   private readonly groups = new Map<string, TabGroup>();
   private readonly view: EditorView;
   private projectId?: string;
@@ -92,6 +102,81 @@ export class WorkspaceEditor {
     });
     window.addEventListener('focus', () => void this.checkDisk());
     window.setInterval(() => void this.checkDisk(), 1500);
+  }
+
+  onBufferChange(changed: () => void): void {
+    this.changed = changed;
+  }
+
+  async captureSelection(): Promise<FileExcerpt> {
+    const projectId = this.projectId;
+    const tab = this.current;
+    const selection = tab?.state.selection.main;
+    if (!projectId || !tab || !selection || selection.empty) {
+      throw new Error('Select some text in the file first.');
+    }
+    const { from, to } = selection;
+    if (to - from > MAX_EXCERPT_CHARS)
+      throw new Error('Select at most 12,000 characters.');
+    const doc = tab.state.doc;
+    const capturedAt = new Date().toISOString();
+    const unsaved = dirty(tab);
+    return {
+      projectId,
+      path: tab.path,
+      text: doc.sliceString(from, to),
+      start: from,
+      end: to,
+      startLine: doc.lineAt(from).number,
+      endLine: doc.lineAt(to - 1).number,
+      capturedAt,
+      unsaved,
+      fingerprint: await bufferFingerprint(doc.toString()),
+    };
+  }
+
+  async canJump(excerpt: FileExcerpt): Promise<boolean> {
+    if (this.projectId !== excerpt.projectId) return false;
+    const tab = this.groups.get(excerpt.projectId)?.tabs.get(excerpt.path);
+    if (tab) {
+      const doc = tab.state.doc;
+      return (
+        (await matchesExcerpt(excerpt, doc.toString())) &&
+        tab.state.doc === doc &&
+        this.projectId === excerpt.projectId
+      );
+    }
+    try {
+      const snapshot = await this.api.readFile(excerpt.projectId, excerpt.path);
+      if (this.groups.get(excerpt.projectId)?.tabs.has(excerpt.path))
+        return this.canJump(excerpt);
+      return (
+        (await matchesExcerpt(excerpt, unpackFile(snapshot.text).doc)) &&
+        this.projectId === excerpt.projectId
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  async jump(project: Project, excerpt: FileExcerpt): Promise<boolean> {
+    if (project.id !== excerpt.projectId || !(await this.canJump(excerpt)))
+      return false;
+    await this.open(project, excerpt.path);
+    const tab = this.current;
+    if (
+      this.projectId !== project.id ||
+      tab?.path !== excerpt.path ||
+      !(await this.canJump(excerpt))
+    )
+      return false;
+    if (this.current !== tab) return false;
+    this.view.dispatch({
+      selection: { anchor: excerpt.start, head: excerpt.end },
+      scrollIntoView: true,
+    });
+    this.view.focus();
+    return true;
   }
 
   show(project: Project): void {
@@ -173,8 +258,13 @@ export class WorkspaceEditor {
           tab.state = update.state;
           if (update.docChanged && this.current === tab) {
             tab.notice = '';
-            this.renderStatus();
+            this.changed();
           }
+          if (
+            this.current === tab &&
+            (update.docChanged || update.selectionSet)
+          )
+            this.renderStatus();
         }),
       ],
     });
@@ -264,6 +354,7 @@ export class WorkspaceEditor {
     }
     const tab = group?.active;
     this.saveButton.disabled = !tab || tab.saving || !dirty(tab);
+    this.captureButton.disabled = !tab || tab.state.selection.main.empty;
     if (!tab) return;
     let status =
       tab.notice || (dirty(tab) ? 'Unsaved changes' : 'Saved on disk');
@@ -329,6 +420,7 @@ export class WorkspaceEditor {
         return;
       this.applySnapshot(tab, snapshot);
       tab.notice = 'Reloaded from disk';
+      this.changed();
       if (this.current === tab) {
         this.error.hidden = true;
         this.renderEditor();
@@ -349,6 +441,7 @@ export class WorkspaceEditor {
     const group = this.group(this.projectId);
     group.openRequest++;
     group.tabs.delete(tab.path);
+    this.changed();
     group.active = [...group.tabs.values()].at(-1);
     this.error.hidden = true;
     this.renderTabs();
@@ -379,6 +472,7 @@ export class WorkspaceEditor {
           if (snapshot && tab.diskChanged && !dirty(tab)) {
             this.applySnapshot(tab, snapshot);
             tab.notice = 'Updated from disk';
+            this.changed();
           }
         }
       }

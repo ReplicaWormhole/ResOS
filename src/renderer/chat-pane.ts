@@ -1,3 +1,4 @@
+import { MAX_FILE_EXCERPTS } from '../shared/file-excerpt.js';
 import {
   latestRevision,
   locateMessage,
@@ -9,10 +10,13 @@ import type {
   ChatJob,
   ChatTurn,
   Conversation,
+  FileExcerpt,
   MessageAddress,
   MessageRevision,
 } from '../shared/notebook-api.js';
 import { renderRichText } from './rich-text.js';
+
+const noExcerpts: FileExcerpt[] = [];
 
 export class ChatPane {
   private readonly selector =
@@ -41,9 +45,17 @@ export class ChatPane {
   private approvals: ApprovalRequest[] = [];
   private readonly activeChat = new Map<string, string>();
   private readonly drafts = new Map<string, string>();
+  private readonly draftExcerpts = new Map<string, FileExcerpt[]>();
+  private readonly excerptDraft =
+    document.querySelector<HTMLElement>('#draft-excerpts')!;
+  private readonly excerptLinks: {
+    button: HTMLButtonElement;
+    excerpt: FileExcerpt;
+  }[] = [];
+  private excerptCheck = 0;
   private readonly requestIds = new Map<
     string,
-    { question: string; id: string }
+    { question: string; excerpts: FileExcerpt[]; id: string }
   >();
   private readonly submitting = new Set<string>();
   private projectId?: string;
@@ -51,7 +63,14 @@ export class ChatPane {
   private available = false;
   private request = 0;
 
-  constructor(private readonly api: ChatApi) {
+  constructor(
+    private readonly api: ChatApi,
+    private readonly excerptNavigation: {
+      canJump(excerpt: FileExcerpt): Promise<boolean>;
+      jump(excerpt: FileExcerpt): Promise<boolean>;
+    },
+  ) {
+    window.setInterval(() => void this.refreshExcerptLinks(), 1500);
     void api
       .chatRuntime()
       .then((mode) => {
@@ -81,6 +100,92 @@ export class ChatPane {
     api.onChatChanged((id) => {
       if (this.projectId === id) void this.refresh(id);
     });
+  }
+
+  async attachExcerpt(excerpt: FileExcerpt): Promise<void> {
+    const id = this.projectId;
+    if (!id || id !== excerpt.projectId || !this.available)
+      throw new Error('The excerpt belongs to another project.');
+    let chat = this.current;
+    if (!chat) {
+      chat = await this.api.createChat(id);
+      if (this.projectId !== id) return;
+      this.activeChat.set(id, chat.id);
+      await this.refresh(id);
+    }
+    const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
+    if (excerpts.length >= MAX_FILE_EXCERPTS)
+      throw new Error('Remove an excerpt before adding another.');
+    this.draftExcerpts.set(chat.id, [...excerpts, excerpt]);
+    if (this.current?.id === chat.id) {
+      this.renderDraftExcerpts();
+      this.input.focus();
+    }
+  }
+
+  async refreshExcerptLinks(hide = false): Promise<void> {
+    const check = ++this.excerptCheck;
+    await Promise.all(
+      this.excerptLinks.map(async ({ button, excerpt }) => {
+        if (hide) button.hidden = true;
+        const matches =
+          this.available && (await this.excerptNavigation.canJump(excerpt));
+        if (check === this.excerptCheck && button.isConnected)
+          button.hidden = !matches;
+      }),
+    );
+  }
+
+  private excerptCard(excerpt: FileExcerpt): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'file-excerpt';
+    const label = document.createElement('strong');
+    label.textContent =
+      excerpt.path +
+      ':' +
+      excerpt.startLine +
+      (excerpt.startLine !== excerpt.endLine ? '–' + excerpt.endLine : '') +
+      (excerpt.unsaved ? ' · Unsaved buffer' : ' · Saved file');
+    label.title = excerpt.capturedAt;
+    const text = document.createElement('pre');
+    text.textContent = excerpt.text;
+    section.append(label, text);
+    return section;
+  }
+
+  private renderDraftExcerpts(): void {
+    this.excerptDraft.replaceChildren();
+    const chat = this.current;
+    if (!chat) return;
+    for (const excerpt of this.draftExcerpts.get(chat.id) ?? []) {
+      const card = this.excerptCard(excerpt);
+      card.append(
+        this.action('Remove excerpt', async () => {
+          const rest = (this.draftExcerpts.get(chat.id) ?? []).filter(
+            (item) => item !== excerpt,
+          );
+          this.draftExcerpts.set(chat.id, rest);
+          this.renderDraftExcerpts();
+        }),
+      );
+      this.excerptDraft.append(card);
+    }
+  }
+
+  private renderSavedExcerpt(excerpt: FileExcerpt): HTMLElement {
+    const card = this.excerptCard(excerpt);
+    const button = this.action('Jump to file excerpt', async () => {
+      if (!(await this.excerptNavigation.jump(excerpt))) {
+        button.hidden = true;
+        throw new Error(
+          'The captured source no longer matches the current buffer or file.',
+        );
+      }
+    });
+    button.hidden = true;
+    card.append(button);
+    this.excerptLinks.push({ button, excerpt });
+    return card;
   }
 
   show(projectId: string, root: string): void {
@@ -185,6 +290,7 @@ export class ChatPane {
         previousScroll <
       24;
     this.transcript.replaceChildren();
+    this.excerptLinks.length = 0;
     if (chat?.source) this.transcript.append(this.renderSource(chat));
     if (!chat?.turns.length) {
       const empty = document.createElement('p');
@@ -201,6 +307,8 @@ export class ChatPane {
     }
     this.renderApprovals();
     this.renderSearch();
+    this.renderDraftExcerpts();
+    void this.refreshExcerptLinks();
     this.transcript.scrollTop = switched
       ? ((chat && this.scrollPositions.get(chat.id)) ??
         this.transcript.scrollHeight)
@@ -295,6 +403,7 @@ export class ChatPane {
         startedAt: job.startedAt,
         finishedAt: job.finishedAt,
         question: turn.question,
+        excerpts: turn.excerpts ?? [],
         context: job.context ?? [],
       },
       null,
@@ -337,6 +446,9 @@ export class ChatPane {
         const text = [
           ...[turn, ...turn.jobs].flatMap((message) => [
             ...revisionsOf(message).map((revision) => revision.text),
+            ...('question' in message
+              ? (message.excerpts ?? []).map((excerpt) => excerpt.text)
+              : []),
             ...(message.notes ?? []).map((note) => note.text),
           ]),
         ].find((value) => value.toLowerCase().includes(query));
@@ -424,6 +536,10 @@ export class ChatPane {
     const heading = document.createElement('strong');
     heading.textContent = author;
     article.append(heading, rich.root);
+    if ('question' in message) {
+      for (const excerpt of message.excerpts ?? [])
+        article.append(this.renderSavedExcerpt(excerpt));
+    }
 
     for (const discussion of linked) {
       const source = discussion.source!;
@@ -614,12 +730,15 @@ export class ChatPane {
     this.renderComposer();
     try {
       let request = this.requestIds.get(chat.id);
-      if (request?.question !== question) {
-        request = { question, id: crypto.randomUUID() };
+      const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
+      if (request?.question !== question || request?.excerpts !== excerpts) {
+        request = { question, excerpts, id: crypto.randomUUID() };
         this.requestIds.set(chat.id, request);
       }
-      await this.api.sendChat(id, chat.id, question, request.id);
+      await this.api.sendChat(id, chat.id, question, request.id, excerpts);
       this.requestIds.delete(chat.id);
+      if (this.draftExcerpts.get(chat.id) === excerpts)
+        this.draftExcerpts.delete(chat.id);
       if (this.drafts.get(chat.id) === question) this.drafts.delete(chat.id);
     } catch (error) {
       if (this.projectId === id) this.showError(error);

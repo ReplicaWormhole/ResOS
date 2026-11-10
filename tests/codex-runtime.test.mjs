@@ -26,6 +26,20 @@ test('Codex transport starts a scoped fresh thread and shows the exact file chan
     conversationId: 'conversation',
     question: 'review',
     context: [],
+    excerpts: [
+      {
+        projectId: 'project',
+        path: 'draft.tex',
+        text: 'captured TeX',
+        start: 0,
+        end: 12,
+        startLine: 1,
+        endLine: 1,
+        capturedAt: '2026-11-10T12:00:00Z',
+        unsaved: true,
+        fingerprint: 'a'.repeat(64),
+      },
+    ],
   };
   for (let iteration = 0; iteration < 2; iteration++) {
     const chunks = [];

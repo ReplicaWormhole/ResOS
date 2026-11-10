@@ -7,6 +7,7 @@ export interface ContextEntry {
   questionRevisionId?: string;
   answerRevisionId?: string;
   passage?: Passage;
+  excerpts?: FileExcerpt[];
 }
 
 export interface ApprovalRequest {
@@ -38,6 +39,7 @@ export interface ChatTurn extends MessageHistory {
   id: string;
   question: string;
   jobs: ChatJob[];
+  excerpts?: FileExcerpt[];
 }
 
 export interface Conversation {
@@ -56,6 +58,7 @@ export interface ChatApi {
     chatId: string,
     question: string,
     requestId: string,
+    excerpts?: FileExcerpt[],
   ): Promise<void>;
   stopChat(projectId: string, jobId: string): Promise<void>;
   retryChat(
@@ -117,4 +120,17 @@ export interface Passage extends MessageAddress {
 
 export interface DiscussionSource extends Passage {
   context: ContextEntry[];
+}
+
+export interface FileExcerpt {
+  projectId: string;
+  path: string;
+  text: string;
+  start: number;
+  end: number;
+  startLine: number;
+  endLine: number;
+  capturedAt: string;
+  unsaved: boolean;
+  fingerprint: string;
 }

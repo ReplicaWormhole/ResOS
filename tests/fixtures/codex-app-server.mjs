@@ -52,6 +52,12 @@ for await (const line of createInterface({ input: process.stdin })) {
         params: { threadId, turnId, itemId: 'message', delta: 'partial ' },
       });
       if (action.includes('review')) {
+        const [notice, data, label, question] = action.split('\n\n');
+        assert.match(notice, /reference data/);
+        assert.equal(label, 'Current user message:');
+        assert.equal(question, 'review');
+        assert.equal(JSON.parse(data).excerpts[0].text, 'captured TeX');
+        assert.equal(JSON.parse(data).excerpts[0].unsaved, true);
         send({
           method: 'item/started',
           params: {

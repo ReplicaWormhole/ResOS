@@ -78,6 +78,18 @@ intact. **Add note** records a separate note on that revision. **Revision
 history** shows the original Markdown and TeX. Unsupported math stays readable
 as source.
 
+## Questions about file selections
+
+Select text in the editor and choose **Ask about file selection**. The chat
+composer shows the excerpt, its original line range, and whether it came
+from an unsaved buffer. Send your question in that chat, or create a new
+ordinary chat before attaching the selection.
+
+The excerpt stays with the message and supplies context to later turns even
+if the source file moves or changes. **Jump to file excerpt** appears when
+the current buffer or file still matches the captured content and range.
+Use **Remove excerpt** to detach a draft before sending.
+
 ## Package and verify
 
 Build the x86-64 Debian package on Ubuntu. Packaging and desktop checks use
@@ -89,13 +101,13 @@ npm run check
 npm run package:linux
 ```
 
-Install `release/resos_0.5.0_amd64.deb` through your package manager and
+Install `release/resos_0.6.0_amd64.deb` through your package manager and
 launch **ResOS** from the application menu. To exercise the packaged app in
 an isolated profile without installing it system-wide:
 
 ```sh
 package_root="$(mktemp -d)"
-dpkg-deb -x release/resos_0.5.0_amd64.deb "$package_root"
+dpkg-deb -x release/resos_0.6.0_amd64.deb "$package_root"
 desktop-file-validate "$package_root/usr/share/applications/resos.desktop"
 RESOS_EXECUTABLE="$package_root/opt/ResOS/resos" xvfb-run -a npm run test:desktop
 ```

@@ -1,4 +1,8 @@
-import type { ApprovalRequest, ContextEntry } from '../shared/notebook-api.js';
+import type {
+  ApprovalRequest,
+  ContextEntry,
+  FileExcerpt,
+} from '../shared/notebook-api.js';
 
 export interface ChatRequest {
   readonly projectId: string;
@@ -6,6 +10,7 @@ export interface ChatRequest {
   readonly cwd: string;
   readonly question: string;
   readonly context: readonly ContextEntry[];
+  readonly excerpts?: readonly FileExcerpt[];
 }
 
 export interface RuntimeControls {

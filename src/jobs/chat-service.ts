@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+import { validFileExcerpts } from '../shared/file-excerpt.js';
 import { randomUUID } from 'node:crypto';
 import { contextBefore } from '../notebook/chat-context.js';
 import {
@@ -125,6 +127,7 @@ export class ChatService {
     conversationId: string,
     question: string,
     requestId: string,
+    excerpts: unknown = [],
   ): Promise<void> {
     if (
       typeof question !== 'string' ||
@@ -136,13 +139,47 @@ export class ChatService {
     if (typeof requestId !== 'string' || !requestId || requestId.length > 128) {
       throw new Error('Invalid request ID.');
     }
+    if (
+      !validFileExcerpts(excerpts) ||
+      excerpts.some((excerpt) => excerpt.projectId !== project.id)
+    ) {
+      throw new Error('Invalid file excerpt for this project.');
+    }
+    const savedExcerpts = excerpts.map(
+      ({
+        projectId,
+        path,
+        text,
+        start,
+        end,
+        startLine,
+        endLine,
+        capturedAt,
+        unsaved,
+        fingerprint,
+      }) => ({
+        projectId,
+        path,
+        text,
+        start,
+        end,
+        startLine,
+        endLine,
+        capturedAt,
+        unsaved,
+        fingerprint,
+      }),
+    );
     await this.notebook.change((chats) => {
       const chat = findChat(chats, project.id, conversationId);
       const existing = chat.turns.find(
         (turn) => turn.jobs[0]?.requestId === requestId,
       );
       if (existing) {
-        if (existing.question !== question)
+        if (
+          existing.question !== question ||
+          !isDeepStrictEqual(existing.excerpts ?? [], savedExcerpts)
+        )
           throw new Error(
             'This request ID was already used for different input.',
           );
@@ -153,6 +190,7 @@ export class ChatService {
       chat.turns.push({
         id: randomUUID(),
         question,
+        ...(savedExcerpts.length ? { excerpts: savedExcerpts } : {}),
         jobs: [
           {
             id: randomUUID(),
@@ -333,6 +371,7 @@ export class ChatService {
       question: turn.question,
       cwd: job.cwd,
       context: job.context ?? [],
+      ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
     };
     const update = async (apply: (entry: ChatJob) => void) => {
       await this.notebook.change((chats) => {

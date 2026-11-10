@@ -8,8 +8,8 @@ const api: DesktopApi = {
   locateProject: (id) => ipcRenderer.invoke('projects:locate', id),
   listChats: (id) => ipcRenderer.invoke('chats:list', id),
   createChat: (id) => ipcRenderer.invoke('chats:create', id),
-  sendChat: (id, chatId, question, requestId) =>
-    ipcRenderer.invoke('chats:send', id, chatId, question, requestId),
+  sendChat: (id, chatId, question, requestId, excerpts) =>
+    ipcRenderer.invoke('chats:send', id, chatId, question, requestId, excerpts),
   stopChat: (id, jobId) => ipcRenderer.invoke('chats:stop', id, jobId),
   retryChat: (id, chatId, jobId, confirm) =>
     ipcRenderer.invoke('chats:retry', id, chatId, jobId, confirm),

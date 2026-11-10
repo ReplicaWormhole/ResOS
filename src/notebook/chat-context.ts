@@ -17,6 +17,7 @@ export function contextBefore(
         conversationId: chat.id,
         turnId: turn.id,
         question: question.text,
+        ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
         ...(question.id !== turn.id ? { questionRevisionId: question.id } : {}),
         ...(job && answer
           ? {

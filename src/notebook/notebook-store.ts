@@ -1,3 +1,4 @@
+import { validFileExcerpts } from '../shared/file-excerpt.js';
 import type {
   ChatJob,
   ChatTurn,
@@ -41,7 +42,8 @@ function isContext(value: unknown): boolean {
         ['answer', 'jobId', 'questionRevisionId', 'answerRevisionId'].every(
           (key) => entry[key] === undefined || typeof entry[key] === 'string',
         ) &&
-        (entry.passage === undefined || isPassage(entry.passage)),
+        (entry.passage === undefined || isPassage(entry.passage)) &&
+        (entry.excerpts === undefined || validFileExcerpts(entry.excerpts)),
     )
   );
 }
@@ -105,6 +107,7 @@ function isTurn(value: unknown): value is ChatTurn {
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.question === 'string' &&
+    (value.excerpts === undefined || validFileExcerpts(value.excerpts)) &&
     isHistory(value) &&
     Array.isArray(value.jobs) &&
     value.jobs.length > 0 &&

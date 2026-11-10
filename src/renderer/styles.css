@@ -376,3 +376,18 @@ p {
   width: min(640px, 80vw);
   font: inherit;
 }
+
+.file-excerpt {
+  border-inline-start: 3px solid var(--border);
+  margin: 6px 0;
+  padding-inline-start: 8px;
+}
+
+.file-excerpt pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-excerpt button {
+  width: auto;
+}

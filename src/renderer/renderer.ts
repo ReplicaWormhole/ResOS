@@ -22,7 +22,28 @@ let availabilityRequest = 0;
 const workspace = document.querySelector<HTMLElement>('#workspace')!;
 const files = document.querySelector<HTMLElement>('#files')!;
 const editor = new WorkspaceEditor(window.resos);
-const chat = new ChatPane(window.resos);
+const chat = new ChatPane(window.resos, {
+  canJump: (excerpt) => editor.canJump(excerpt),
+  jump: async (excerpt) => {
+    if (!selected || selected.id !== excerpt.projectId || !available)
+      return false;
+    expandPane('');
+    return editor.jump(selected, excerpt);
+  },
+});
+editor.onBufferChange(() => void chat.refreshExcerptLinks(true));
+document
+  .querySelector('#ask-file-selection')!
+  .addEventListener('click', async () => {
+    try {
+      const excerpt = await editor.captureSelection();
+      if (selected?.id !== excerpt.projectId) return;
+      expandPane('');
+      await chat.attachExcerpt(excerpt);
+    } catch (error) {
+      showError(error);
+    }
+  });
 const missing = document.querySelector<HTMLElement>('#missing-project')!;
 const locate = document.querySelector<HTMLButtonElement>('#locate-project')!;
 const tree = new FileTree(
