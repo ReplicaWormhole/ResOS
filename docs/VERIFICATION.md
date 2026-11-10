@@ -252,7 +252,9 @@ every jump validates the range again before selecting it.
   in a single conversation. It exercised streamed replies, model and effort
   selection, Ask mode, write approval, project isolation, command denial,
   Stop with an outstanding approval, and retry after switching the composer
-  to another harness.
+  to another harness. With `RESOS_TEST_SANDBOX=1`, the packaged executable
+  also approved a command through the composer, ran it in Bubblewrap, and
+  streamed its output through the Claude protocol fixture.
 - The Ubuntu 24.04 x86-64 Debian package and SHA-256 sidecar were verified.
   The package includes the Agent SDK, its MCP peer, and Zod, with the optional
   Claude Code executable excluded. A fresh Ubuntu 24.04 container installed

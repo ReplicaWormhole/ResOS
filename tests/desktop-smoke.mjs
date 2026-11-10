@@ -234,6 +234,28 @@ test(
         })
         .waitFor();
 
+      if (process.env.RESOS_TEST_SANDBOX === '1') {
+        await send('fixture Claude command');
+        await approve.waitFor();
+        const requests = await window.evaluate(
+          (id) => window.resos.listApprovals(id),
+          project.id,
+        );
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].kind, 'Claude Code command');
+        assert.equal(
+          requests[0].detail,
+          'Read-only project snapshot with private scratch space\n\n' +
+            JSON.stringify(['/usr/bin/cat', 'marker.txt'], null, 2),
+        );
+        await approve.click();
+        await transcript
+          .locator('[data-status=complete]')
+          .last()
+          .getByText('Claude partial workspace marker', { exact: true })
+          .waitFor();
+      }
+
       await send('fixture Claude write pending');
       await approve.waitFor();
       await transcript.getByRole('button', { name: 'Stop response' }).click();
