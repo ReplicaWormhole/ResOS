@@ -1,9 +1,9 @@
 # ResOS v2 plan
 
-This plan extends the [v1 spec](SPEC.md). The first usable slice is opening a local folder,
-starting a chat, reading a file, and asking about selected text without
-losing your place. The v2 release adds model controls and a second coding
-harness to that workflow.
+This plan extends the [v1 spec](SPEC.md). Open a local folder, start a
+chat, and ask about selected text without losing your place. The v2
+release adds inspectable context, Codex model controls, and a versioned
+desktop installer. Additional coding harnesses are deferred.
 
 ## Workspace and selection
 
@@ -90,14 +90,11 @@ the harness adds. Desktop has no app-level history budget or agent-side
 notebook lookup. The browser prototype applied a 90,000-character budget to
 its node history and exposed a read-only search helper.
 
-For v2, keep ResOS as the source of truth for history, branches, annotations,
-and run records. Extend the existing runtime interface behind Electron's
-main process. Each adapter reports available models and model-specific
-settings, starts and cancels work, streams status and output, and translates
-tool approval requests. Keep authentication in the harness or OS credential
-store. Allow configured backends through a controlled interface with
-capabilities and permission checks. Reuse the same chat and selection
-workflow across harnesses.
+ResOS owns history, branches, annotations, and run records. The runtime
+interface behind Electron's main process reports models and supported
+settings, starts and cancels work, streams output, and translates tool
+approval requests. Codex is the live backend for v2 and owns its
+authentication.
 
 - Put **Harness**, **Model**, and **Reasoning effort** in the composer. Use
   the installed backend's available models and supported settings. Offer
@@ -131,23 +128,20 @@ workflow across harnesses.
   private unless explicitly attached. Use a brokered read-only interface
   rather than exposing the notebook database or filesystem path to agents.
   Record lookup results separately from the initial payload.
-- Start with Codex and the existing demo runtime. Evaluate Claude Agent SDK
-  as the first second harness. Its documented model discovery, streaming,
-  and approval callbacks make it a candidate. Validate actual Linux
-  confinement, supported settings, authentication, and cancellation before
-  committing to it. Keep harness sessions disposable initially so changing
-  harnesses preserves chat semantics. [Claude Agent SDK reference] ·
-  [Claude Agent SDK permissions]
+- Ship with Codex and the existing offline demo runtime. Preserve
+  experimental Claude run records as history. Before adding another live
+  harness, verify its authentication, settings, streaming, cancellation,
+  workspace confinement, and approval routing.
 
 ## Milestones and acceptance gates
 
-| Milestone                          | Deliverable                                                                                                              | Exit check                                                                                                                                                                                                                                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V2-01 · Chat-first workspace       | Files and Chats disclosures, central chat, editor tabs and optional split                                                | Switch two projects, collapse both sections independently, open a file, and move among layouts while preserving chat scroll, drafts, and dirty buffers.                                                                                                                                                                      |
-| V2-02 · Selection and discussions  | Shared selection toolbar, side chat, clickable and overlapping passage links, file questions, annotation and attachments | Select the second of two identical phrases and a rendered formula. Branch twice, reopen via a highlight, and verify the parent's position and draft. Ask about an unsaved file selection, change the file, and verify the old quote remains visible without a stale jump. Annotate without a run and attach without sending. |
-| V2-03 · Inspectable context        | Bounded payload, preview, run record, and scoped lookup where supported                                                  | With a long notebook and two projects, retain the pinned source and explicit attachments, report omissions, and isolate sibling and cross-project history. Verify exact submitted payload and explicit retry.                                                                                                                |
-| V2-04 · Codex controls             | Capability-driven model and effort picker, Ask and Agent modes                                                           | Use protocol fixtures to test discovered settings, immutable queued settings, missing models, retry, and approvals. Verify one real disposable Codex run with a supported selection.                                                                                                                                         |
-| V2-05 · Second harness and release | Second verified adapter and versioned desktop package                                                                    | Run both adapters on one disposable project and verify settings, streaming, stop, write boundaries, and approval routing. Install the package on clean Ubuntu and restore a v1 backup with old IDs, revisions, and links intact.                                                                                             |
+| Milestone                         | Deliverable                                                                                                              | Exit check                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V2-01 · Chat-first workspace      | Files and Chats disclosures, central chat, editor tabs and optional split                                                | Switch two projects, collapse both sections independently, open a file, and move among layouts while preserving chat scroll, drafts, and dirty buffers.                                                                                                                                                                      |
+| V2-02 · Selection and discussions | Shared selection toolbar, side chat, clickable and overlapping passage links, file questions, annotation and attachments | Select the second of two identical phrases and a rendered formula. Branch twice, reopen via a highlight, and verify the parent's position and draft. Ask about an unsaved file selection, change the file, and verify the old quote remains visible without a stale jump. Annotate without a run and attach without sending. |
+| V2-03 · Inspectable context       | Bounded payload, preview, run record, and scoped lookup where supported                                                  | With a long notebook and two projects, retain the pinned source and explicit attachments, report omissions, and isolate sibling and cross-project history. Verify exact submitted payload and explicit retry.                                                                                                                |
+| V2-04 · Codex controls            | Capability-driven model and effort picker, Ask and Agent modes                                                           | Use protocol fixtures to test discovered settings, immutable queued settings, missing models, retry, and approvals. Verify one real disposable Codex run with a supported selection.                                                                                                                                         |
+| V2-05 · Codex desktop release     | Versioned Ubuntu desktop package and checksum                                                                            | Verify the packaged Codex workflow. Install the package on clean Ubuntu and restore a v1 backup with old IDs, revisions, and links intact. Verify that experimental Claude records remain readable.                                                                                                                          |
 
 Keep one milestone per change. Run source checks and packaged desktop
 smoke tests in CI with fixture backends. Run live harness checks with
@@ -156,5 +150,3 @@ document a new runtime or storage decision when it becomes concrete.
 
 [Codex model discovery]: https://learn.chatgpt.com/docs/app-server#list-models-modellist
 [Codex turn settings]: https://learn.chatgpt.com/docs/app-server#turns
-[Claude Agent SDK reference]: https://code.claude.com/docs/en/agent-sdk/typescript
-[Claude Agent SDK permissions]: https://code.claude.com/docs/en/agent-sdk/permissions

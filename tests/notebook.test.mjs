@@ -793,3 +793,61 @@ test('queued settings stay immutable and a replacement run explicitly changes on
   assert.deepEqual(replacement.input, original.input);
   assert.equal(seen[3].input, seen[1].input);
 });
+
+test('keeps experimental Claude history and requires an explicit Codex replacement', async (t) => {
+  const path = await fixture(t);
+  const project = { id: 'p', root: '/workspace', name: 'Project' };
+  const original = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream() {
+        yield 'Saved partial answer';
+        throw new Error('fixture failure');
+      },
+    },
+    () => {},
+    'codex',
+  );
+  const chat = await original.create(project.id);
+  await original.send(project, chat.id, 'Keep this question', 'question');
+  await until(() => !original.isRunning(project.id));
+  const snapshot = JSON.parse(await readFile(path, 'utf8'));
+  const job = snapshot.conversations[0].turns[0].jobs[0];
+  job.runtime = 'claude';
+  job.settings = {
+    harness: 'claude',
+    mode: 'ask',
+    model: 'fixture',
+    effort: 'low',
+  };
+  job.effectiveSettings = { model: 'fixture', effort: 'low' };
+  await writeFile(path, JSON.stringify(snapshot));
+
+  const service = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream() {
+        yield 'Codex answer';
+      },
+    },
+    () => {},
+    'codex',
+  );
+  assert.deepEqual(await service.list(project.id), snapshot.conversations);
+  await assert.rejects(
+    service.retry(project, chat.id, job.id, false),
+    /saved harness is unavailable/,
+  );
+  await service.retry(project, chat.id, job.id, false, {
+    harness: 'codex',
+    mode: 'ask',
+  });
+  await until(() => !service.isRunning(project.id));
+  const [reopened] = await service.list(project.id);
+  const [saved, replacement] = reopened.turns[0].jobs;
+  assert.deepEqual(saved, job);
+  assert.equal(replacement.answer, 'Codex answer');
+  assert.equal(replacement.runtime, 'codex');
+  assert.equal(replacement.retryOf, job.id);
+  assert.deepEqual(replacement.input, job.input);
+});

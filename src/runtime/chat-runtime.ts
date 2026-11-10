@@ -4,7 +4,6 @@ import type {
   EffectiveRunSettings,
   HarnessModel,
   RunSettings,
-  RunMode,
   FileExcerpt,
   FileSource,
   NotebookMatch,
@@ -41,7 +40,6 @@ export interface RuntimeControls {
 export interface ChatRuntime {
   readonly inputLimitBytes?: number;
   readonly supportsNotebookLookup?: boolean;
-  readonly modes?: RunMode[];
   listModels?(cwd: string): Promise<HarnessModel[]>;
   stream(
     request: ChatRequest,

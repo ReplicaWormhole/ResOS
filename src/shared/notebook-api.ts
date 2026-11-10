@@ -42,6 +42,7 @@ export interface ContextOptions {
   settings?: RunSettings;
 }
 
+// Claude is retained for notebook records from the experimental build.
 export type Harness = 'demo' | 'codex' | 'claude';
 export type RunMode = 'ask' | 'agent';
 
@@ -171,8 +172,9 @@ export interface ChatApi {
     approvalId: string,
     accept: boolean,
   ): Promise<void>;
-  listHarnesses(): Promise<Harness[]>;
-  harnessCatalog(projectId: string, harness: Harness): Promise<HarnessCatalog>;
+  chatRuntime(): Promise<'demo' | 'codex'>;
+  supportsNotebookLookup(): Promise<boolean>;
+  harnessCatalog(projectId: string): Promise<HarnessCatalog>;
   reviseMessage(
     projectId: string,
     address: MessageAddress,

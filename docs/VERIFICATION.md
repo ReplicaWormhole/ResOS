@@ -242,31 +242,25 @@ every jump validates the range again before selecting it.
   it. The adapter verifies these overrides at runtime and fails if policy
   requirements prevent their application.
 
-## V2-05 · Second harness and release candidate
+## V2-05 · Codex desktop release
 
-- `RESOS_TEST_SANDBOX=1 npm run check` passed formatting, lint, typecheck,
-  build, and 26 tests. The sandbox check verified an in-snapshot read,
-  private scratch writes, blocked project writes, blocked socket creation,
-  outside-path isolation, and cancellation.
-- The credential-free desktop fixture switched between Codex and Claude
-  in a single conversation. It exercised streamed replies, model and effort
-  selection, Ask mode, write approval, project isolation, command denial,
-  Stop with an outstanding approval, and retry after switching the composer
-  to another harness. With `RESOS_TEST_SANDBOX=1`, the packaged executable
-  also approved a command through the composer, ran it in Bubblewrap, and
-  streamed its output through the Claude protocol fixture.
-- The Ubuntu 24.04 x86-64 Debian package and SHA-256 sidecar were verified.
-  The package includes the Agent SDK, its MCP peer, and Zod, with the optional
-  Claude Code executable excluded. A fresh Ubuntu 24.04 container installed
-  the package with APT and validated its desktop entry. All eight packaged
-  smoke tests passed, including restoring a backup produced by the verified
-  v1 executable and checking project IDs, revisions, and both source types.
-  Chromium sandboxing stayed enabled with the setuid helper configured in
-  the container. The separate Bubblewrap test used a container with its
-  usual read-only system paths relaxed so Bubblewrap could set its own
-  namespace limit.
-- Live Codex streamed a reply from the v2 executable in a disposable
-  project. Claude Code 2.1.322 reported a model catalog and confirmed its
-  effective model at startup. The first live Claude turn received HTTP 401
-  for the existing OAuth token. The two-harness live acceptance check is
-  pending Claude sign-in. No release has been published.
+- The live release uses Codex. The Claude prototype and its fixture checks
+  remain in Git at `471bad4` and `8693b22` for future work. The released app
+  can read the prototype's saved run records, and an explicit Codex retry
+  keeps the original input and attempt history.
+- A clean dependency install and `npm run check` passed. All 24 source
+  tests passed, including the experimental notebook compatibility check
+  and the existing Codex settings, cancellation, and approval fixtures.
+- The versioned Ubuntu x86-64 package and SHA-256 sidecar were verified.
+  Inspection of the app archive and package metadata confirmed removal of
+  the Claude adapter, its SDK, and the Bubblewrap dependency.
+- A fresh Ubuntu 24.04 container installed the package using APT and
+  validated its desktop entry. All seven packaged desktop tests passed.
+  The restore test copied a backup from the verified v1.0.0 executable into
+  a fresh profile and confirmed project IDs, revisions, and both source
+  types. Chromium sandboxing remained enabled with the setuid helper
+  configured inside the container.
+- The packaged live smoke test used Codex CLI 0.167.0. Ask read a marker
+  and Agent wrote a file in the same disposable project. Both attempts
+  recorded the selected model, confirmed settings, and run IDs. No release
+  has been published.
