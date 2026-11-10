@@ -128,6 +128,16 @@ function registerDesktopHandlers(
     }),
   );
 
+  ipcMain.handle('chats:revise', async (event, id, address, text) =>
+    chats.reviseMessage((await projectFor(event, id)).id, address, text),
+  );
+  ipcMain.handle('chats:note', async (event, id, address, text) =>
+    chats.addMessageNote((await projectFor(event, id)).id, address, text),
+  );
+  ipcMain.handle('chats:discuss', async (event, id, passage) =>
+    chats.createDiscussion((await projectFor(event, id)).id, passage),
+  );
+
   ipcMain.handle('chats:runtime', (event) => {
     requireAppFrame(event);
     return runtimeMode;

@@ -1,4 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { contextBefore } from '../notebook/chat-context.js';
+import {
+  addNote,
+  discuss,
+  findChat,
+  revise,
+  validAddress,
+} from '../notebook/discussions.js';
 import type { NotebookStore } from '../notebook/notebook-store.js';
 import type { ChatRequest, ChatRuntime } from '../runtime/chat-runtime.js';
 import type { Project } from '../shared/desktop-api.js';
@@ -6,7 +14,8 @@ import type {
   ApprovalRequest,
   ChatJob,
   ChatTurn,
-  ContextEntry,
+  MessageAddress,
+  Passage,
   Conversation,
 } from '../shared/notebook-api.js';
 
@@ -17,33 +26,6 @@ interface ActiveJob {
     string,
     { request: ApprovalRequest; resolve: (accept: boolean) => void }
   >;
-}
-
-function findChat(
-  chats: Conversation[],
-  projectId: string,
-  conversationId: string,
-): Conversation {
-  const chat = chats.find(
-    (item) => item.id === conversationId && item.projectId === projectId,
-  );
-  if (!chat) throw new Error('Chat not found in this project.');
-  return chat;
-}
-
-function contextBefore(
-  chat: Conversation,
-  index = chat.turns.length,
-): ContextEntry[] {
-  return chat.turns.slice(0, index).map((turn) => {
-    const job = turn.jobs.findLast((item) => item.status === 'complete');
-    return {
-      conversationId: chat.id,
-      turnId: turn.id,
-      question: turn.question,
-      ...(job ? { jobId: job.id, answer: job.answer } : {}),
-    };
-  });
 }
 
 function attempts(chats: Conversation[]) {
@@ -89,6 +71,51 @@ export class ChatService {
     });
   }
 
+  async reviseMessage(
+    projectId: string,
+    address: MessageAddress,
+    text: string,
+  ): Promise<void> {
+    if (!validAddress(address)) throw new Error('Invalid message address.');
+    await this.notebook.change((chats) =>
+      revise(findChat(chats, projectId, address.conversationId), address, text),
+    );
+    this.changed(projectId);
+  }
+
+  async addMessageNote(
+    projectId: string,
+    address: MessageAddress,
+    text: string,
+  ): Promise<void> {
+    if (!validAddress(address)) throw new Error('Invalid message address.');
+    await this.notebook.change((chats) =>
+      addNote(
+        findChat(chats, projectId, address.conversationId),
+        address,
+        text,
+      ),
+    );
+    this.changed(projectId);
+  }
+
+  async createDiscussion(
+    projectId: string,
+    passage: Passage,
+  ): Promise<Conversation> {
+    if (!validAddress(passage)) throw new Error('Invalid passage address.');
+    const discussion = await this.notebook.change((chats) => {
+      const branch = discuss(
+        findChat(chats, projectId, passage.conversationId),
+        passage,
+      );
+      chats.push(branch);
+      return branch;
+    });
+    this.changed(projectId);
+    return discussion;
+  }
+
   isRunning(projectId: string): boolean {
     return this.active.has(projectId);
   }
@@ -121,7 +148,7 @@ export class ChatService {
           );
         return;
       }
-      if (!chat.turns.length)
+      if (!chat.turns.length && !chat.source)
         chat.title = question.trim().split(/\s+/).join(' ').slice(0, 60);
       chat.turns.push({
         id: randomUUID(),

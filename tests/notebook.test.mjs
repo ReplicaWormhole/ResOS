@@ -212,3 +212,71 @@ test('queues in submission order, isolates approvals, stops a partial turn, and 
   );
   assert.equal(seen.at(-1).context[0].jobId, chat.turns[0].jobs[1].id);
 });
+
+test('pins a repeated passage and preserves revision history, notes, and ancestry', async (t) => {
+  const path = await fixture(t);
+  const seen = [];
+  const service = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream(request) {
+        seen.push(request);
+        yield 'same phrase, same phrase';
+      },
+    },
+    () => {},
+  );
+  const project = { id: 'project', root: '/workspace', name: 'Project' };
+  const chat = await service.create(project.id);
+  await service.send(project, chat.id, 'Original question', 'original');
+  await until(() => !service.isRunning(project.id));
+  const [saved] = await service.list(project.id);
+  const turn = saved.turns[0];
+  const [job] = turn.jobs;
+  const address = {
+    conversationId: chat.id,
+    messageId: job.id,
+    revisionId: job.id,
+  };
+  const quote = 'same phrase';
+  const start = job.answer.lastIndexOf(quote);
+  const passage = { ...address, start, end: start + quote.length, quote };
+  await assert.rejects(
+    service.createDiscussion(project.id, { ...passage, quote: 'mismatch' }),
+    /does not match/,
+  );
+  await assert.rejects(
+    service.createDiscussion('another', passage),
+    /not found in this project/,
+  );
+  await service.addMessageNote(project.id, address, 'Note on original answer');
+  const branch = await service.createDiscussion(project.id, passage);
+  await service.reviseMessage(project.id, address, 'Edited answer');
+  await assert.rejects(
+    service.reviseMessage(project.id, address, 'stale edit'),
+    /changed since/,
+  );
+  await service.reviseMessage(
+    project.id,
+    { conversationId: chat.id, messageId: turn.id, revisionId: turn.id },
+    'Edited question',
+  );
+  await service.send(project, branch.id, 'Branch follow-up', 'branch');
+  await until(() => !service.isRunning(project.id));
+  assert.equal(seen.at(-1).context[0].answer, 'same phrase, same phrase');
+  assert.deepEqual(seen.at(-1).context[0].passage, passage);
+
+  await service.send(project, chat.id, 'Main follow-up', 'main');
+  await until(() => !service.isRunning(project.id));
+  assert.equal(seen.at(-1).context[0].question, 'Edited question');
+  assert.equal(seen.at(-1).context[0].answer, 'Edited answer');
+  const [main, discussion] = await new NotebookStore(path).list(project.id);
+  assert.equal(main.turns[0].jobs[0].answer, 'same phrase, same phrase');
+  assert.deepEqual(
+    main.turns[0].jobs[0].revisions.map((revision) => revision.text),
+    ['same phrase, same phrase', 'Edited answer'],
+  );
+  assert.equal(main.turns[0].jobs[0].notes[0].revisionId, job.id);
+  assert.equal(discussion.source.start, start);
+  assert.equal(discussion.source.revisionId, job.id);
+});

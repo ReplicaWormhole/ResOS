@@ -14,6 +14,64 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function isPassage(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    ['conversationId', 'messageId', 'revisionId', 'quote'].every(
+      (key) => typeof value[key] === 'string',
+    ) &&
+    typeof value.start === 'number' &&
+    Number.isSafeInteger(value.start) &&
+    value.start >= 0 &&
+    typeof value.end === 'number' &&
+    Number.isSafeInteger(value.end) &&
+    value.end > value.start
+  );
+}
+
+function isContext(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.conversationId === 'string' &&
+        typeof entry.turnId === 'string' &&
+        typeof entry.question === 'string' &&
+        ['answer', 'jobId', 'questionRevisionId', 'answerRevisionId'].every(
+          (key) => entry[key] === undefined || typeof entry[key] === 'string',
+        ) &&
+        (entry.passage === undefined || isPassage(entry.passage)),
+    )
+  );
+}
+
+function isHistory(value: Record<string, unknown>): boolean {
+  return (
+    (value.revisions === undefined ||
+      (Array.isArray(value.revisions) &&
+        value.revisions.length > 0 &&
+        value.revisions.every(
+          (item) =>
+            isRecord(item) &&
+            typeof item.id === 'string' &&
+            typeof item.text === 'string' &&
+            (item.author === 'agent' || item.author === 'user') &&
+            (item.createdAt === undefined ||
+              typeof item.createdAt === 'string'),
+        ))) &&
+    (value.notes === undefined ||
+      (Array.isArray(value.notes) &&
+        value.notes.every(
+          (note) =>
+            isRecord(note) &&
+            typeof note.id === 'string' &&
+            typeof note.revisionId === 'string' &&
+            typeof note.text === 'string',
+        )))
+  );
+}
+
 function isJob(value: unknown): value is ChatJob {
   return (
     isRecord(value) &&
@@ -32,17 +90,8 @@ function isJob(value: unknown): value is ChatJob {
       (typeof value.queueOrder === 'number' &&
         Number.isSafeInteger(value.queueOrder))) &&
     (value.retryOf === undefined || typeof value.retryOf === 'string') &&
-    (value.context === undefined ||
-      (Array.isArray(value.context) &&
-        value.context.every(
-          (entry) =>
-            isRecord(entry) &&
-            typeof entry.conversationId === 'string' &&
-            typeof entry.turnId === 'string' &&
-            typeof entry.question === 'string' &&
-            (entry.answer === undefined || typeof entry.answer === 'string') &&
-            (entry.jobId === undefined || typeof entry.jobId === 'string'),
-        ))) &&
+    (value.context === undefined || isContext(value.context)) &&
+    isHistory(value) &&
     (value.status === 'queued' ||
       value.status === 'running' ||
       value.status === 'complete' ||
@@ -56,6 +105,7 @@ function isTurn(value: unknown): value is ChatTurn {
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.question === 'string' &&
+    isHistory(value) &&
     Array.isArray(value.jobs) &&
     value.jobs.length > 0 &&
     value.jobs.every(isJob)
@@ -68,6 +118,10 @@ function isConversation(value: unknown): value is Conversation {
     typeof value.id === 'string' &&
     typeof value.projectId === 'string' &&
     typeof value.title === 'string' &&
+    (value.source === undefined ||
+      (isRecord(value.source) &&
+        isPassage(value.source) &&
+        isContext(value.source.context))) &&
     Array.isArray(value.turns) &&
     value.turns.every(isTurn)
   );

@@ -1,6 +1,6 @@
 {
   "name": "resos",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "A local research IDE and Codex notebook",
   "author": "ResOS contributors",
@@ -64,6 +64,8 @@
     "@codemirror/search": "6.7.2",
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
-    "codemirror": "6.0.2"
+    "codemirror": "6.0.2",
+    "katex": "0.19.1",
+    "mdast-util-from-markdown": "2.1.0"
   }
 }

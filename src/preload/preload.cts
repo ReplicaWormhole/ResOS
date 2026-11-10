@@ -17,6 +17,12 @@ const api: DesktopApi = {
   decideApproval: (id, approvalId, accept) =>
     ipcRenderer.invoke('chats:approval', id, approvalId, accept),
   chatRuntime: () => ipcRenderer.invoke('chats:runtime'),
+  reviseMessage: (id, address, text) =>
+    ipcRenderer.invoke('chats:revise', id, address, text),
+  addMessageNote: (id, address, text) =>
+    ipcRenderer.invoke('chats:note', id, address, text),
+  createDiscussion: (id, passage) =>
+    ipcRenderer.invoke('chats:discuss', id, passage),
   onChatChanged: (listener) => {
     const receive = (_event: unknown, projectId: string) => listener(projectId);
     ipcRenderer.on('chats:changed', receive);

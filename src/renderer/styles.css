@@ -324,3 +324,55 @@ p {
   width: auto;
   margin: 4px 4px 4px 0;
 }
+
+.chat-rich {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chat-rich p {
+  white-space: pre-wrap;
+}
+
+.chat-rich pre,
+.discussion-source pre,
+.message-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-math {
+  white-space: normal;
+}
+
+.chat-display-math {
+  display: block;
+  overflow-x: auto;
+}
+
+.chat-link {
+  text-decoration: underline;
+}
+
+.chat-note,
+.discussion-source {
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 8px;
+  margin: 8px 0;
+}
+
+.message-dialog {
+  max-width: min(680px, 90vw);
+  max-height: 80vh;
+  overflow: auto;
+  color: inherit;
+  background: var(--rail);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.message-dialog textarea {
+  display: block;
+  width: min(640px, 80vw);
+  font: inherit;
+}

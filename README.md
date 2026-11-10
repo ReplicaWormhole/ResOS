@@ -65,6 +65,19 @@ Its conversation history stays accessible while the folder is missing.
 Choose the new location to re-enable the editor and sending. The notebook
 is saved beside the registry in the app data directory as `notebook.json`.
 
+## Discussions and revisions
+
+Select a passage in a saved message and choose **Ask about selection**. The
+discussion keeps the original source range and revision. Select any part of
+rendered math to quote the complete TeX expression. Use **Back to parent** to
+return to the draft and reading position you left. Main conversations remain
+in the dropdown, and follow-ups open from their source messages.
+
+**Edit message** creates a revision and leaves existing replies and links
+intact. **Add note** records a separate note on that revision. **Revision
+history** shows the original Markdown and TeX. Unsupported math stays readable
+as source.
+
 ## Package and verify
 
 Build the x86-64 Debian package on Ubuntu. Packaging and desktop checks use
@@ -76,13 +89,13 @@ npm run check
 npm run package:linux
 ```
 
-Install `release/resos_0.4.0_amd64.deb` through your package manager and
+Install `release/resos_0.5.0_amd64.deb` through your package manager and
 launch **ResOS** from the application menu. To exercise the packaged app in
 an isolated profile without installing it system-wide:
 
 ```sh
 package_root="$(mktemp -d)"
-dpkg-deb -x release/resos_0.4.0_amd64.deb "$package_root"
+dpkg-deb -x release/resos_0.5.0_amd64.deb "$package_root"
 desktop-file-validate "$package_root/usr/share/applications/resos.desktop"
 RESOS_EXECUTABLE="$package_root/opt/ResOS/resos" xvfb-run -a npm run test:desktop
 ```

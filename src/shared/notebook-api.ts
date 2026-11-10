@@ -4,6 +4,9 @@ export interface ContextEntry {
   question: string;
   jobId?: string;
   answer?: string;
+  questionRevisionId?: string;
+  answerRevisionId?: string;
+  passage?: Passage;
 }
 
 export interface ApprovalRequest {
@@ -14,7 +17,7 @@ export interface ApprovalRequest {
   detail: string;
 }
 
-export interface ChatJob {
+export interface ChatJob extends MessageHistory {
   id: string;
   cwd: string;
   status: 'queued' | 'running' | 'complete' | 'interrupted' | 'failed';
@@ -31,7 +34,7 @@ export interface ChatJob {
   error?: string;
 }
 
-export interface ChatTurn {
+export interface ChatTurn extends MessageHistory {
   id: string;
   question: string;
   jobs: ChatJob[];
@@ -42,6 +45,7 @@ export interface Conversation {
   projectId: string;
   title: string;
   turns: ChatTurn[];
+  source?: DiscussionSource;
 }
 
 export interface ChatApi {
@@ -67,5 +71,50 @@ export interface ChatApi {
     accept: boolean,
   ): Promise<void>;
   chatRuntime(): Promise<'demo' | 'codex'>;
+  reviseMessage(
+    projectId: string,
+    address: MessageAddress,
+    text: string,
+  ): Promise<void>;
+  addMessageNote(
+    projectId: string,
+    address: MessageAddress,
+    text: string,
+  ): Promise<void>;
+  createDiscussion(projectId: string, passage: Passage): Promise<Conversation>;
   onChatChanged(listener: (projectId: string) => void): () => void;
+}
+
+export interface MessageRevision {
+  id: string;
+  text: string;
+  author: 'user' | 'agent';
+  createdAt?: string;
+}
+
+export interface HumanNote {
+  id: string;
+  revisionId: string;
+  text: string;
+}
+
+export interface MessageHistory {
+  revisions?: MessageRevision[];
+  notes?: HumanNote[];
+}
+
+export interface MessageAddress {
+  conversationId: string;
+  messageId: string;
+  revisionId: string;
+}
+
+export interface Passage extends MessageAddress {
+  start: number;
+  end: number;
+  quote: string;
+}
+
+export interface DiscussionSource extends Passage {
+  context: ContextEntry[];
 }

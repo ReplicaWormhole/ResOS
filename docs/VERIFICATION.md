@@ -101,3 +101,18 @@ and the [official app-server documentation](https://learn.chatgpt.com/docs/app-s
 The desktop client handles concrete command, file-change, and permission
 approval requests. Other interactive app-server requests receive an
 unsupported-method error.
+
+## M05 · CHAT-02, CHAT-03, and CHAT-04
+
+- `npm run check` passed all 15 unit tests. Notebook tests verify that edits
+  preserve the original run and revision-linked notes, stale edits fail, and
+  discussions use their pinned ancestry even after the parent is revised.
+- `npm run package:linux` built `resos_0.5.0_amd64.deb`. The desktop file
+  passed validation and all four desktop tests passed on the extracted
+  package. The new test covers literal HTML, incomplete TeX, selection of the
+  second repeated phrase, selection inside rendered MathML, nested navigation,
+  draft and scroll restoration, revision history, and earlier-revision links.
+- `npm audit --omit=dev` reported zero production advisories. Markdown
+  is rendered from parsed nodes, and KaTeX uses native MathML with trust
+  disabled and bounded macro expansion. A Markdown text run that cannot be
+  aligned to source offsets after parsing is treated as one source unit.
