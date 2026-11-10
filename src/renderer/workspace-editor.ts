@@ -3,7 +3,7 @@ import {
   matchesExcerpt,
   MAX_EXCERPT_CHARS,
 } from '../shared/file-excerpt.js';
-import type { FileExcerpt } from '../shared/notebook-api.js';
+import type { FileExcerpt, FileNote } from '../shared/notebook-api.js';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { StreamLanguage } from '@codemirror/language';
@@ -66,9 +66,10 @@ export class WorkspaceEditor {
     document.querySelector<HTMLElement>('#editor-error')!;
   private readonly saveButton =
     document.querySelector<HTMLButtonElement>('#save-file')!;
-  private readonly captureButton = document.querySelector<HTMLButtonElement>(
-    '#ask-file-selection',
-  )!;
+  private readonly notesHost =
+    document.querySelector<HTMLElement>('#editor-notes')!;
+  private notes: FileNote[] = [];
+  private displayedNotes?: { tab: Tab; doc: Text; notes: FileNote[] };
   private changed: () => void = () => {};
   private readonly groups = new Map<string, TabGroup>();
   private readonly editorHost =
@@ -108,31 +109,94 @@ export class WorkspaceEditor {
     this.changed = changed;
   }
 
-  async captureSelection(): Promise<FileExcerpt> {
+  fileSource():
+    { projectId: string; path: string; unsaved: boolean } | undefined {
+    const tab = this.current;
+    if (this.projectId && tab)
+      return { projectId: this.projectId, path: tab.path, unsaved: dirty(tab) };
+  }
+
+  captureSelection(range: Range): (() => Promise<FileExcerpt>) | undefined {
     const projectId = this.projectId;
     const tab = this.current;
-    const selection = tab?.state.selection.main;
-    if (!projectId || !tab || !selection || selection.empty) {
-      throw new Error('Select some text in the file first.');
-    }
-    const { from, to } = selection;
-    if (to - from > MAX_EXCERPT_CHARS)
-      throw new Error('Select at most 12,000 characters.');
+    const view = tab?.view;
+    if (
+      !projectId ||
+      !tab ||
+      !view ||
+      !view.contentDOM.contains(range.startContainer) ||
+      !view.contentDOM.contains(range.endContainer)
+    )
+      return;
+    const from = view.posAtDOM(range.startContainer, range.startOffset);
+    const to = view.posAtDOM(range.endContainer, range.endOffset);
     const doc = tab.state.doc;
+    if (to <= from || !doc.sliceString(from, to).trim()) return;
     const capturedAt = new Date().toISOString();
     const unsaved = dirty(tab);
-    return {
-      projectId,
-      path: tab.path,
-      text: doc.sliceString(from, to),
-      start: from,
-      end: to,
-      startLine: doc.lineAt(from).number,
-      endLine: doc.lineAt(to - 1).number,
-      capturedAt,
-      unsaved,
-      fingerprint: await bufferFingerprint(doc.toString()),
+    return async () => {
+      if (this.current !== tab || tab.state.doc !== doc)
+        throw new Error(
+          'The selected buffer changed. Select the passage again.',
+        );
+      if (to - from > MAX_EXCERPT_CHARS)
+        throw new Error('Select at most 12,000 characters.');
+      return {
+        projectId,
+        path: tab.path,
+        text: doc.sliceString(from, to),
+        start: from,
+        end: to,
+        startLine: doc.lineAt(from).number,
+        endLine: doc.lineAt(to - 1).number,
+        capturedAt,
+        unsaved,
+        fingerprint: await bufferFingerprint(doc.toString()),
+      };
     };
+  }
+
+  setNotes(notes: FileNote[]): void {
+    this.notes = notes;
+    void this.renderNotes();
+  }
+
+  private async renderNotes(): Promise<void> {
+    const tab = this.current;
+    const notes = this.notes;
+    const doc = tab?.state.doc;
+    if (
+      this.displayedNotes?.tab === tab &&
+      this.displayedNotes?.doc === doc &&
+      this.displayedNotes?.notes === notes
+    )
+      return;
+    this.displayedNotes = tab && doc ? { tab, doc, notes } : undefined;
+    const matching = notes.filter(
+      ({ excerpt }) =>
+        excerpt.projectId === this.projectId && excerpt.path === tab?.path,
+    );
+    this.notesHost.replaceChildren();
+    if (!tab || !doc || !matching.length) return;
+    const fingerprint = await bufferFingerprint(doc.toString());
+    if (this.current !== tab || tab.state.doc !== doc || this.notes !== notes)
+      return;
+    for (const { excerpt, text } of matching) {
+      if (
+        excerpt.fingerprint !== fingerprint ||
+        doc.sliceString(excerpt.start, excerpt.end) !== excerpt.text
+      )
+        continue;
+      const details = document.createElement('details');
+      const title = document.createElement('summary');
+      title.textContent = 'Note on line ' + excerpt.startLine;
+      const quote = document.createElement('blockquote');
+      quote.textContent = excerpt.text;
+      const body = document.createElement('p');
+      body.textContent = text;
+      details.append(title, quote, body);
+      this.notesHost.append(details);
+    }
   }
 
   async canJump(excerpt: FileExcerpt): Promise<boolean> {
@@ -259,6 +323,7 @@ export class WorkspaceEditor {
           if (update.docChanged && this.current === tab) {
             tab.notice = '';
             this.changed();
+            void this.renderNotes();
           }
           if (
             this.current === tab &&
@@ -351,6 +416,7 @@ export class WorkspaceEditor {
       view.dom.hidden = false;
     }
     this.renderStatus();
+    void this.renderNotes();
   }
 
   private renderStatus(): void {
@@ -364,7 +430,6 @@ export class WorkspaceEditor {
     }
     const tab = group?.active;
     this.saveButton.disabled = !tab || tab.saving || !dirty(tab);
-    this.captureButton.disabled = !tab || tab.state.selection.main.empty;
     if (!tab) return;
     let status =
       tab.notice || (dirty(tab) ? 'Unsaved changes' : 'Saved on disk');

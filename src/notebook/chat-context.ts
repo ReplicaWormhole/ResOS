@@ -18,6 +18,7 @@ export function contextBefore(
         turnId: turn.id,
         question: question.text,
         ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
+        ...(turn.passages?.length ? { passages: turn.passages } : {}),
         ...(question.id !== turn.id ? { questionRevisionId: question.id } : {}),
         ...(job && answer
           ? {

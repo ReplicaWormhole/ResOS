@@ -562,9 +562,38 @@ test(
           selection.removeAllRanges();
           selection.addRange(range);
         });
-      await question
-        .getByRole('button', { name: 'Ask about selection' })
-        .evaluate((node) => node.click());
+      const selection = window.getByRole('group', {
+        name: 'Selection actions',
+      });
+      const ask = selection.getByRole('button', {
+        name: 'Ask about selection',
+      });
+      await ask.waitFor();
+      await window.evaluate(async () => {
+        const [project] = await window.resos.listProjects();
+        const [chat] = await window.resos.listChats(project.id);
+        const job = chat.turns[0].jobs[0];
+        await window.resos.addMessageNote(
+          project.id,
+          {
+            conversationId: chat.id,
+            messageId: job.id,
+            revisionId: job.id,
+          },
+          'Unrelated transcript refresh',
+        );
+      });
+      await transcript
+        .getByText('Unrelated transcript refresh', { exact: true })
+        .waitFor();
+      assert.equal(
+        await question.evaluate((node) =>
+          node.ownerDocument.getSelection().toString(),
+        ),
+        'same phrase',
+      );
+      await ask.click();
+      await window.getByRole('region', { name: 'Parent chat' }).waitFor();
       await transcript.getByText('Discussion source').waitFor();
       assert.match(
         await transcript.locator('blockquote').innerText(),
@@ -599,7 +628,7 @@ test(
           selection.removeAllRanges();
           selection.addRange(range);
         });
-      await answer.getByRole('button', { name: 'Ask about selection' }).click();
+      await ask.click();
       await transcript.locator('.discussion-source math').waitFor();
       const [project] = await window.evaluate(() =>
         window.resos.listProjects(),
@@ -630,15 +659,84 @@ test(
       assert.equal(await question.locator('mark').count(), 1);
       assert.equal(await question.locator('mark').textContent(), 'same phrase');
 
+      const parent = window.getByRole('region', { name: 'Parent chat' });
       await question
-        .getByRole('button', { name: 'Add note', exact: true })
-        .click();
+        .getByRole('button', { name: 'Open linked discussion' })
+        .press('Enter');
+      await parent.waitFor();
+      await window.getByRole('button', { name: 'Expand', exact: true }).click();
+      await parent.waitFor({ state: 'hidden' });
+      assert.equal(await composer.inputValue(), 'Branch draft');
+      await window.getByRole('button', { name: 'Restore side chat' }).click();
+      await parent.waitFor();
+      await window.getByRole('button', { name: 'Back to parent' }).click();
+
+      const paragraph = question
+        .locator('.chat-rich p')
+        .filter({ hasText: 'same phrase, same phrase.' })
+        .first();
+      async function selectParagraph() {
+        await paragraph.scrollIntoViewIfNeeded();
+        await paragraph.evaluate((node) => {
+          const range = node.ownerDocument.createRange();
+          range.selectNodeContents(node);
+          const selection = node.ownerDocument.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        });
+      }
+      await selectParagraph();
+      await ask.click();
+      await parent.waitFor();
+      await window.getByRole('button', { name: 'Back to parent' }).click();
+      const overlap = question
+        .locator('mark')
+        .filter({ hasText: /^same phrase$/ })
+        .last();
+      await overlap.press('Enter');
+      const chooser = window.getByRole('dialog');
+      await chooser.getByText('Choose a discussion', { exact: true }).waitFor();
+      assert.equal(
+        await chooser.getByRole('button', { name: /^Discussion/ }).count(),
+        2,
+      );
+      await chooser.getByRole('button', { name: 'Close' }).click();
+
+      await selectParagraph();
+      await selection.waitFor();
+      await window.keyboard.press('Alt+Shift+a');
+      assert.equal(
+        await selection.evaluate(
+          (node) => node.ownerDocument.activeElement.textContent,
+        ),
+        'Annotate',
+      );
+      await window.keyboard.press('Enter');
       const dialog = window.getByRole('dialog');
       await dialog
-        .getByRole('textbox', { name: 'Add note' })
+        .getByRole('textbox', { name: 'Annotate passage' })
         .fill('Original note');
       await dialog.getByRole('button', { name: 'Save' }).click();
       await dialog.waitFor({ state: 'hidden' });
+      await question.getByText('Original note', { exact: true }).waitFor();
+
+      await selectParagraph();
+      await selection.getByRole('button', { name: 'Add to chat' }).click();
+      const quoteDraft = window.locator('#draft-excerpts');
+      await quoteDraft
+        .getByText('same phrase, same phrase.', { exact: true })
+        .waitFor();
+      assert.equal(await composer.inputValue(), 'Parent draft');
+      assert.equal(
+        await transcript.locator('[data-status=complete]').count(),
+        1,
+      );
+      await quoteDraft.getByRole('button', { name: 'Remove quote' }).click();
+      await quoteDraft
+        .getByText('same phrase, same phrase.', { exact: true })
+        .waitFor({ state: 'hidden' });
+
+      await question.getByText('Message actions', { exact: true }).click();
       await question.getByRole('button', { name: 'Edit message' }).click();
       await dialog
         .getByRole('textbox', { name: 'Edit message' })
@@ -646,12 +744,19 @@ test(
       await dialog.getByRole('button', { name: 'Save' }).click();
       await dialog.waitFor({ state: 'hidden' });
       await question.getByText('Your note · earlier revision').waitFor();
+      if (
+        !(await question
+          .getByRole('button', { name: 'Revision history' })
+          .isVisible())
+      )
+        await question.getByText('Message actions', { exact: true }).click();
       await question.getByRole('button', { name: 'Revision history' }).click();
       assert.match(await dialog.innerText(), /Revised source/);
       assert.match(await dialog.innerText(), /same phrase, same phrase/);
       await dialog.getByRole('button', { name: 'Close' }).click();
       await question
         .getByRole('button', { name: /Open discussion.*earlier revision/ })
+        .first()
         .click();
       await transcript.getByText('Source revision', { exact: true }).click();
       assert.match(
@@ -707,9 +812,9 @@ test(
         tex,
       );
       await contents.press('Shift+Home');
-      const attach = window.getByRole('button', {
-        name: 'Ask about file selection',
-      });
+      const attach = window
+        .getByRole('group', { name: 'Selection actions' })
+        .getByRole('button', { name: 'Add to chat' });
       await attach.click();
       const draft = window.locator('#draft-excerpts');
       await draft.getByText('draft.tex:2 · Unsaved buffer').waitFor();
@@ -733,9 +838,58 @@ test(
         ),
         tex,
       );
+      const selection = window.getByRole('group', {
+        name: 'Selection actions',
+      });
+      await selection.getByRole('button', { name: 'Annotate' }).click();
+      const dialog = window.getByRole('dialog');
+      await dialog
+        .getByRole('textbox', { name: 'Annotate file selection' })
+        .fill('A local file note');
+      await dialog.getByRole('button', { name: 'Save' }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await window
+        .locator('#editor-notes')
+        .getByText('Note on line 2')
+        .waitFor();
+      assert.equal(
+        await transcript.locator('[data-status=complete]').count(),
+        1,
+      );
+      const composer = window.getByRole('textbox', { name: 'Message' });
+      await composer.fill('Original chat draft');
+      await contents.press('Control+End');
+      await contents.press('Shift+Home');
+      await selection
+        .getByRole('button', { name: 'Ask about selection' })
+        .click();
+      await transcript.getByText('draft.tex:2 · Unsaved buffer').waitFor();
+      assert.equal(await composer.inputValue(), '');
+      await contents.waitFor();
+      await composer.fill('Question in file side chat');
+      await window.getByRole('button', { name: 'Send', exact: true }).click();
+      await transcript.locator('[data-status=complete]').waitFor();
       await contents.press('Control+Home');
       await window.keyboard.insertText('Changed ');
       await jump.waitFor({ state: 'hidden' });
+      await window
+        .locator('#editor-notes')
+        .getByText('Note on line 2')
+        .waitFor({ state: 'hidden' });
+      await window.getByRole('button', { name: 'Back to file' }).click();
+      assert.equal(await composer.inputValue(), 'Original chat draft');
+      await window
+        .getByRole('list', { name: 'Conversations' })
+        .getByText('File', { exact: true })
+        .waitFor();
+
+      window.once('dialog', (prompt) => void prompt.accept());
+      await window
+        .getByRole('button', { name: 'Ask about saved file' })
+        .click();
+      await transcript.getByText(/Reads the current on-disk file/).waitFor();
+      assert.equal(await transcript.locator('.file-excerpt').count(), 0);
+      await window.getByRole('button', { name: 'Back to file' }).click();
       await rename(path, join(projectRoot, 'moved.tex'));
     } finally {
       await app.close();
@@ -769,6 +923,37 @@ test(
       );
       assert.equal(chat.turns[1].jobs[0].context[0].excerpts[0].text, tex);
       assert.equal(chat.turns[0].excerpts[0].unsaved, true);
+      const [main, fileChat, wholeFile] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        project.id,
+      );
+      assert.equal(main.id, chat.id);
+      assert.equal(fileChat.fileSource.excerpt.text, tex);
+      assert.equal(fileChat.turns[0].question, 'Question in file side chat');
+      assert.deepEqual(wholeFile.fileSource, { path: 'draft.tex' });
+      const sidebar = window.getByRole('list', { name: 'Conversations' });
+      await sidebar
+        .getByRole('button', {
+          name: 'Question in file side chat · File chat',
+          exact: true,
+        })
+        .first()
+        .click();
+      await transcript
+        .getByText('Question in file side chat', { exact: true })
+        .waitFor();
+      assert.equal(
+        await transcript
+          .getByRole('button', { name: 'Jump to file excerpt' })
+          .count(),
+        0,
+      );
+      await window.getByText('File notes', { exact: true }).click();
+      await window.locator('#file-notes summary').click();
+      await window
+        .locator('#file-notes')
+        .getByText('A local file note', { exact: true })
+        .waitFor();
     } finally {
       await reopened.close();
     }
@@ -790,15 +975,18 @@ test(
     const text = 'Pinned text';
     await writeFile(join(projectRoot, 'fixture.txt'), text);
     const executablePath = process.env.RESOS_EXECUTABLE;
-    const launch = (config) =>
+    const launch = (config, binary = executablePath) =>
       electron.launch({
-        executablePath,
-        args: executablePath ? [] : ['.'],
+        executablePath: binary,
+        args: binary ? [] : ['.'],
         chromiumSandbox: true,
         env: { ...process.env, RESOS_RUNTIME: 'demo', XDG_CONFIG_HOME: config },
         timeout: 15_000,
       });
-    const original = await launch(originalConfig);
+    const original = await launch(
+      originalConfig,
+      process.env.RESOS_PREVIOUS_EXECUTABLE,
+    );
     let saved;
     let dataDir;
     try {
@@ -921,6 +1109,15 @@ test(
         await transcript.locator('.discussion-source pre').innerText(),
         /Original question/,
       );
+      await window.evaluate(
+        (id) => window.resos.createChat(id),
+        saved.project.id,
+      );
+      const persisted = JSON.parse(
+        await readFile(join(restoredData, 'notebook.json'), 'utf8'),
+      );
+      assert.equal(persisted.version, 2);
+      assert.deepEqual(persisted.conversations.slice(0, 2), saved.chats);
     } finally {
       await restored.close();
     }

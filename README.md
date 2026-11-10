@@ -76,30 +76,32 @@ Its conversation history stays accessible while the folder is missing.
 Choose the new location to re-enable the editor and sending. The notebook
 is saved beside the registry in the app data directory as `notebook.json`.
 
-## Discussions and revisions
+## Questions and annotations
 
-Select a passage in a saved message and choose **Ask about selection**. The
-discussion keeps the original source range and revision. Select any part of
-rendered math to quote the complete TeX expression. Use **Back to parent** to
-return to the draft and reading position you left. The main conversation stays
-selected in the sidebar, and follow-ups open from their source messages.
+Select text in a saved chat message or the editor to show the selection
+toolbar. Use **Alt+Shift+A** to focus the actions from the keyboard and
+**Escape** to dismiss them.
 
-**Edit message** creates a revision and leaves existing replies and links
-intact. **Add note** records a separate note on that revision. **Revision
-history** shows the original Markdown and TeX. Unsupported math stays readable
-as source.
+- **Annotate** saves a local note for the selected passage. Open file notes
+  under **Chats** to revisit the original text after a file changes.
+- **Ask about selection** opens a side chat. A chat passage pins its exact
+  revision and can have nested discussions. Click a highlighted passage to
+  reopen one, or choose among its linked discussions. Use **Expand** for more
+  room and **Back to parent** to return to the draft and reading position you
+  left. A file selection creates a file chat with its own entry in **Chats**.
+- **Add to chat** adds a removable quote to the current draft. The quote is
+  sent when you send the message. Unsaved editor text is labeled as such.
 
-## Questions about file selections
+A file chat or note retains the captured excerpt even if the file moves or
+changes. **Jump to file excerpt** appears only when the current buffer or
+file matches. **Ask about saved file** starts a separate chat that refers
+to the current file on disk, with confirmation if the editor has unsaved
+changes.
 
-Select text in the editor and choose **Ask about file selection**. The chat
-composer shows the excerpt, its original line range, and whether it came
-from an unsaved buffer. Send your question in that chat, or create a new
-ordinary chat before attaching the selection.
-
-The excerpt stays with the message and supplies context to later turns even
-if the source file moves or changes. **Jump to file excerpt** appears when
-the current buffer or file still matches the captured content and range.
-Use **Remove excerpt** to detach a draft before sending.
+Select any part of a rendered formula to capture the full TeX expression.
+Open **Message actions** to edit a message, add a general note, inspect
+revision history, or view a response's run context. Editing preserves
+existing replies and their source links.
 
 ## Package and verify
 

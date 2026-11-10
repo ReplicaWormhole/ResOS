@@ -18,6 +18,7 @@ import { CodexRuntime } from '../runtime/codex/codex-runtime.js';
 import { findCodex } from '../runtime/codex/find-codex.js';
 import { demoRuntime } from '../runtime/demo-runtime.js';
 import type { Project } from '../shared/desktop-api.js';
+import { validFileSource } from '../shared/file-excerpt.js';
 import {
   listDirectory,
   readFile,
@@ -115,9 +116,23 @@ function registerDesktopHandlers(
   ipcMain.handle('chats:create', async (event, id) =>
     chats.create((await projectFor(event, id)).id),
   );
+  ipcMain.handle('chats:create-file', (event, id, source) =>
+    changeWorkspace(async () => {
+      const project = await availableProject(event, id);
+      if (!validFileSource(source)) throw new Error('Invalid file source.');
+      if (!source.excerpt) await readFile(project.root, source.path);
+      return chats.createFileChat(project.id, source);
+    }),
+  );
+  ipcMain.handle('chats:file-notes', async (event, id) =>
+    chats.listFileNotes((await projectFor(event, id)).id),
+  );
+  ipcMain.handle('chats:file-note', async (event, id, excerpt, text) =>
+    chats.addFileNote((await projectFor(event, id)).id, excerpt, text),
+  );
   ipcMain.handle(
     'chats:send',
-    (event, id, chatId, question, requestId, excerpts) =>
+    (event, id, chatId, question, requestId, excerpts, passages) =>
       changeWorkspace(async () => {
         if (typeof chatId !== 'string' || chatId.length > 128)
           throw new Error('Invalid chat ID.');
@@ -127,6 +142,7 @@ function registerDesktopHandlers(
           question,
           requestId,
           excerpts,
+          passages,
         );
       }),
   );
@@ -134,8 +150,13 @@ function registerDesktopHandlers(
   ipcMain.handle('chats:revise', async (event, id, address, text) =>
     chats.reviseMessage((await projectFor(event, id)).id, address, text),
   );
-  ipcMain.handle('chats:note', async (event, id, address, text) =>
-    chats.addMessageNote((await projectFor(event, id)).id, address, text),
+  ipcMain.handle('chats:note', async (event, id, address, text, passage) =>
+    chats.addMessageNote(
+      (await projectFor(event, id)).id,
+      address,
+      text,
+      passage,
+    ),
   );
   ipcMain.handle('chats:discuss', async (event, id, passage) =>
     chats.createDiscussion((await projectFor(event, id)).id, passage),

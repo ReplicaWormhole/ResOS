@@ -1,12 +1,19 @@
 import { isDeepStrictEqual } from 'node:util';
-import { validFileExcerpts } from '../shared/file-excerpt.js';
+import {
+  copyFileExcerpt,
+  validFileExcerpt,
+  validFileExcerpts,
+  validFileSource,
+} from '../shared/file-excerpt.js';
 import { randomUUID } from 'node:crypto';
 import { contextBefore } from '../notebook/chat-context.js';
 import {
   addNote,
+  checkText,
   discuss,
   findChat,
   revise,
+  resolvePassage,
   validAddress,
 } from '../notebook/discussions.js';
 import type { NotebookStore } from '../notebook/notebook-store.js';
@@ -19,6 +26,7 @@ import type {
   MessageAddress,
   Passage,
   Conversation,
+  FileNote,
 } from '../shared/notebook-api.js';
 
 interface ActiveJob {
@@ -73,6 +81,52 @@ export class ChatService {
     });
   }
 
+  async createFileChat(
+    projectId: string,
+    source: unknown,
+  ): Promise<Conversation> {
+    if (
+      !validFileSource(source) ||
+      (source.excerpt && source.excerpt.projectId !== projectId)
+    )
+      throw new Error('Invalid file source for this project.');
+    const { path, excerpt } = source;
+    const chat = await this.notebook.change((chats) => {
+      const created: Conversation = {
+        id: randomUUID(),
+        projectId,
+        title: path.split('/').at(-1)!,
+        turns: [],
+        fileSource: {
+          path,
+          ...(excerpt ? { excerpt: copyFileExcerpt(excerpt) } : {}),
+        },
+      };
+      chats.push(created);
+      return created;
+    });
+    this.changed(projectId);
+    return chat;
+  }
+
+  listFileNotes(projectId: string): Promise<FileNote[]> {
+    return this.notebook.listFileNotes(projectId);
+  }
+
+  async addFileNote(
+    projectId: string,
+    excerpt: unknown,
+    text: unknown,
+  ): Promise<void> {
+    checkText(text);
+    if (!validFileExcerpt(excerpt) || excerpt.projectId !== projectId)
+      throw new Error('Invalid file excerpt for this project.');
+    await this.notebook.change((_chats, notes) => {
+      notes.push({ id: randomUUID(), excerpt: copyFileExcerpt(excerpt), text });
+    });
+    this.changed(projectId);
+  }
+
   async reviseMessage(
     projectId: string,
     address: MessageAddress,
@@ -89,6 +143,7 @@ export class ChatService {
     projectId: string,
     address: MessageAddress,
     text: string,
+    passage?: Passage,
   ): Promise<void> {
     if (!validAddress(address)) throw new Error('Invalid message address.');
     await this.notebook.change((chats) =>
@@ -96,6 +151,7 @@ export class ChatService {
         findChat(chats, projectId, address.conversationId),
         address,
         text,
+        passage,
       ),
     );
     this.changed(projectId);
@@ -128,6 +184,7 @@ export class ChatService {
     question: string,
     requestId: string,
     excerpts: unknown = [],
+    passages: unknown = [],
   ): Promise<void> {
     if (
       typeof question !== 'string' ||
@@ -145,40 +202,26 @@ export class ChatService {
     ) {
       throw new Error('Invalid file excerpt for this project.');
     }
-    const savedExcerpts = excerpts.map(
-      ({
-        projectId,
-        path,
-        text,
-        start,
-        end,
-        startLine,
-        endLine,
-        capturedAt,
-        unsaved,
-        fingerprint,
-      }) => ({
-        projectId,
-        path,
-        text,
-        start,
-        end,
-        startLine,
-        endLine,
-        capturedAt,
-        unsaved,
-        fingerprint,
-      }),
-    );
+    if (!Array.isArray(passages) || passages.length > 5)
+      throw new Error('Attach up to five chat passages.');
+    const savedExcerpts = excerpts.map(copyFileExcerpt);
     await this.notebook.change((chats) => {
       const chat = findChat(chats, project.id, conversationId);
+      const savedPassages = passages.map((passage: unknown) => {
+        if (!validAddress(passage)) throw new Error('Invalid passage address.');
+        return resolvePassage(
+          findChat(chats, project.id, passage.conversationId),
+          passage as Passage,
+        ).source;
+      });
       const existing = chat.turns.find(
         (turn) => turn.jobs[0]?.requestId === requestId,
       );
       if (existing) {
         if (
           existing.question !== question ||
-          !isDeepStrictEqual(existing.excerpts ?? [], savedExcerpts)
+          !isDeepStrictEqual(existing.excerpts ?? [], savedExcerpts) ||
+          !isDeepStrictEqual(existing.passages ?? [], savedPassages)
         )
           throw new Error(
             'This request ID was already used for different input.',
@@ -191,6 +234,7 @@ export class ChatService {
         id: randomUUID(),
         question,
         ...(savedExcerpts.length ? { excerpts: savedExcerpts } : {}),
+        ...(savedPassages.length ? { passages: savedPassages } : {}),
         jobs: [
           {
             id: randomUUID(),
@@ -372,6 +416,8 @@ export class ChatService {
       cwd: job.cwd,
       context: job.context ?? [],
       ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
+      ...(turn.passages?.length ? { passages: turn.passages } : {}),
+      ...(chat.fileSource ? { fileSource: chat.fileSource } : {}),
     };
     const update = async (apply: (entry: ChatJob) => void) => {
       await this.notebook.change((chats) => {

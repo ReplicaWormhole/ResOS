@@ -8,8 +8,21 @@ const api: DesktopApi = {
   locateProject: (id) => ipcRenderer.invoke('projects:locate', id),
   listChats: (id) => ipcRenderer.invoke('chats:list', id),
   createChat: (id) => ipcRenderer.invoke('chats:create', id),
-  sendChat: (id, chatId, question, requestId, excerpts) =>
-    ipcRenderer.invoke('chats:send', id, chatId, question, requestId, excerpts),
+  createFileChat: (id, source) =>
+    ipcRenderer.invoke('chats:create-file', id, source),
+  listFileNotes: (id) => ipcRenderer.invoke('chats:file-notes', id),
+  addFileNote: (id, excerpt, text) =>
+    ipcRenderer.invoke('chats:file-note', id, excerpt, text),
+  sendChat: (id, chatId, question, requestId, excerpts, passages) =>
+    ipcRenderer.invoke(
+      'chats:send',
+      id,
+      chatId,
+      question,
+      requestId,
+      excerpts,
+      passages,
+    ),
   stopChat: (id, jobId) => ipcRenderer.invoke('chats:stop', id, jobId),
   retryChat: (id, chatId, jobId, confirm) =>
     ipcRenderer.invoke('chats:retry', id, chatId, jobId, confirm),
@@ -19,8 +32,8 @@ const api: DesktopApi = {
   chatRuntime: () => ipcRenderer.invoke('chats:runtime'),
   reviseMessage: (id, address, text) =>
     ipcRenderer.invoke('chats:revise', id, address, text),
-  addMessageNote: (id, address, text) =>
-    ipcRenderer.invoke('chats:note', id, address, text),
+  addMessageNote: (id, address, text, passage) =>
+    ipcRenderer.invoke('chats:note', id, address, text, passage),
   createDiscussion: (id, passage) =>
     ipcRenderer.invoke('chats:discuss', id, passage),
   onChatChanged: (listener) => {

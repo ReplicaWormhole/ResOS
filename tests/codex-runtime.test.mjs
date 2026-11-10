@@ -26,6 +26,18 @@ test('Codex transport starts a scoped fresh thread and shows the exact file chan
     conversationId: 'conversation',
     question: 'review',
     context: [],
+    fileSource: { path: 'notes.tex' },
+    passages: [
+      {
+        conversationId: 'source',
+        messageId: 'message',
+        revisionId: 'revision',
+        start: 0,
+        end: 11,
+        quote: 'Pinned text',
+      },
+    ],
+
     excerpts: [
       {
         projectId: 'project',

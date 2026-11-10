@@ -56,7 +56,7 @@ function savedMessage(chat: Conversation, address: MessageAddress) {
   return { ...located, revision };
 }
 
-function checkText(text: unknown): asserts text is string {
+export function checkText(text: unknown): asserts text is string {
   if (typeof text !== 'string' || !text.trim() || text.length > 120_000) {
     throw new Error('Enter nonempty text of at most 120,000 characters.');
   }
@@ -87,13 +87,23 @@ export function addNote(
   chat: Conversation,
   address: MessageAddress,
   text: string,
+  passage?: Passage,
 ): void {
   checkText(text);
   const { message, revision } = savedMessage(chat, address);
+  const source =
+    passage === undefined ? undefined : resolvePassage(chat, passage).source;
+  if (
+    source &&
+    (source.messageId !== address.messageId ||
+      source.revisionId !== address.revisionId)
+  )
+    throw new Error('The annotation belongs to a different message revision.');
   (message.notes ??= []).push({
     id: randomUUID(),
     revisionId: revision.id,
     text,
+    ...(source ? { passage: source } : {}),
   });
 }
 
@@ -111,6 +121,7 @@ function focalContext(
     question: question.text,
     questionRevisionId: question.id,
     ...(turn.excerpts?.length ? { excerpts: turn.excerpts } : {}),
+    ...(turn.passages?.length ? { passages: turn.passages } : {}),
     ...('answer' in message
       ? {
           jobId: message.id,
@@ -122,8 +133,11 @@ function focalContext(
   };
 }
 
-export function discuss(chat: Conversation, passage: Passage): Conversation {
-  const { message, revision, turn, index } = savedMessage(chat, passage);
+export function resolvePassage(chat: Conversation, passage: Passage) {
+  if (!validAddress(passage) || passage.conversationId !== chat.id)
+    throw new Error('The selection belongs to a different conversation.');
+  const located = savedMessage(chat, passage);
+  const { revision, message } = located;
   if (
     !Number.isSafeInteger(passage.start) ||
     !Number.isSafeInteger(passage.end) ||
@@ -145,12 +159,21 @@ export function discuss(chat: Conversation, passage: Passage): Conversation {
     end: passage.end,
     quote: passage.quote,
   };
+  return { ...located, source };
+}
+
+export function discuss(chat: Conversation, passage: Passage): Conversation {
+  const { message, revision, turn, index, source } = resolvePassage(
+    chat,
+    passage,
+  );
   return {
     id: randomUUID(),
     projectId: chat.projectId,
     title:
       'Discussion · ' + passage.quote.trim().replace(/\s+/g, ' ').slice(0, 48),
     turns: [],
+    ...(chat.fileSource ? { fileSource: chat.fileSource } : {}),
     source: {
       ...source,
       context: [

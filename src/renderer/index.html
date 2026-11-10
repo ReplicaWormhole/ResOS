@@ -54,6 +54,10 @@
             <input id="chat-search" type="search" />
             <ul id="chat-search-results"></ul>
           </details>
+          <details class="chat-context">
+            <summary>File notes</summary>
+            <div id="file-notes"></div>
+          </details>
         </div>
       </section>
     </aside>
@@ -85,36 +89,52 @@
           <div id="editor-document" role="tabpanel" hidden>
             <div id="editor-actions">
               <button id="save-file" type="button">Save</button>
-              <button id="ask-file-selection" type="button" disabled>
-                Ask about file selection
-              </button>
+              <button id="ask-file" type="button">Ask about saved file</button>
               <button id="find-in-file" type="button">Find</button>
               <button id="reload-file" type="button">Reload file</button>
               <button id="close-file" type="button">Close tab</button>
             </div>
             <p id="editor-status" role="status"></p>
+            <div id="editor-notes"></div>
             <div id="text-editor"></div>
           </div>
           <p id="editor-error" role="alert" hidden></p>
         </section>
-        <section id="chat-pane" aria-label="Chat">
-          <p id="chat-runtime" class="chat-demo"></p>
-          <div id="chat-approvals"></div>
-          <div
-            id="chat-transcript"
-            aria-label="Conversation history"
-            tabindex="0"
-          ></div>
-          <p id="chat-error" role="alert" hidden></p>
-          <form id="chat-composer">
-            <div id="draft-excerpts"></div>
-            <label for="chat-input">Message</label>
-            <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
-            <button id="chat-send" type="submit">Send</button>
-          </form>
-          <p id="chat-status" role="status"></p>
-        </section>
+        <div id="chat-stage">
+          <section id="parent-chat" aria-label="Parent chat" hidden></section>
+          <section id="chat-pane" aria-label="Chat">
+            <div id="side-chat-actions" hidden>
+              <button id="side-chat-back" type="button">Back to parent</button>
+              <button id="side-chat-expand" type="button">Expand</button>
+            </div>
+            <p id="chat-runtime" class="chat-demo"></p>
+            <div id="chat-approvals"></div>
+            <div
+              id="chat-transcript"
+              aria-label="Conversation history"
+              tabindex="0"
+            ></div>
+            <p id="chat-error" role="alert" hidden></p>
+            <form id="chat-composer">
+              <div id="draft-excerpts"></div>
+              <label for="chat-input">Message</label>
+              <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
+              <button id="chat-send" type="submit">Send</button>
+            </form>
+            <p id="chat-status" role="status"></p>
+          </section>
+        </div>
       </div>
     </main>
+    <div
+      id="selection-toolbar"
+      role="group"
+      aria-label="Selection actions"
+      hidden
+    >
+      <button type="button" data-action="annotate">Annotate</button>
+      <button type="button" data-action="ask">Ask about selection</button>
+      <button type="button" data-action="add">Add to chat</button>
+    </div>
   </body>
 </html>

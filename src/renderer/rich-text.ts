@@ -135,6 +135,7 @@ export function renderRichText(source: string, marks: readonly Span[] = []) {
   const root = document.createElement('div');
   root.className = 'chat-rich';
   const leaves: Leaf[] = [];
+  const leafSpans = new WeakMap<Element, Span>();
 
   function addLeaf(
     parent: HTMLElement,
@@ -163,6 +164,7 @@ export function renderRichText(source: string, marks: readonly Span[] = []) {
           ? 'mark'
           : 'span',
       );
+      leafSpans.set(node, { start, end });
       node.textContent = atomic
         ? text
         : text.slice(start - span.start, end - span.start);
@@ -318,5 +320,5 @@ export function renderRichText(source: string, marks: readonly Span[] = []) {
     if (start !== undefined && end !== undefined) return { start, end };
   }
 
-  return { root, selection };
+  return { root, selection, spanOf: (node: Element) => leafSpans.get(node) };
 }

@@ -2,6 +2,8 @@ import type {
   ApprovalRequest,
   ContextEntry,
   FileExcerpt,
+  FileSource,
+  Passage,
 } from '../shared/notebook-api.js';
 
 export interface ChatRequest {
@@ -11,6 +13,8 @@ export interface ChatRequest {
   readonly question: string;
   readonly context: readonly ContextEntry[];
   readonly excerpts?: readonly FileExcerpt[];
+  readonly passages?: readonly Passage[];
+  readonly fileSource?: FileSource;
 }
 
 export interface RuntimeControls {

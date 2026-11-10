@@ -8,6 +8,7 @@ export interface ContextEntry {
   answerRevisionId?: string;
   passage?: Passage;
   excerpts?: FileExcerpt[];
+  passages?: Passage[];
 }
 
 export interface ApprovalRequest {
@@ -40,6 +41,7 @@ export interface ChatTurn extends MessageHistory {
   question: string;
   jobs: ChatJob[];
   excerpts?: FileExcerpt[];
+  passages?: Passage[];
 }
 
 export interface Conversation {
@@ -48,17 +50,26 @@ export interface Conversation {
   title: string;
   turns: ChatTurn[];
   source?: DiscussionSource;
+  fileSource?: FileSource;
 }
 
 export interface ChatApi {
   listChats(projectId: string): Promise<Conversation[]>;
   createChat(projectId: string): Promise<Conversation>;
+  createFileChat(projectId: string, source: FileSource): Promise<Conversation>;
+  listFileNotes(projectId: string): Promise<FileNote[]>;
+  addFileNote(
+    projectId: string,
+    excerpt: FileExcerpt,
+    text: string,
+  ): Promise<void>;
   sendChat(
     projectId: string,
     chatId: string,
     question: string,
     requestId: string,
     excerpts?: FileExcerpt[],
+    passages?: Passage[],
   ): Promise<void>;
   stopChat(projectId: string, jobId: string): Promise<void>;
   retryChat(
@@ -83,6 +94,7 @@ export interface ChatApi {
     projectId: string,
     address: MessageAddress,
     text: string,
+    passage?: Passage,
   ): Promise<void>;
   createDiscussion(projectId: string, passage: Passage): Promise<Conversation>;
   onChatChanged(listener: (projectId: string) => void): () => void;
@@ -99,6 +111,7 @@ export interface HumanNote {
   id: string;
   revisionId: string;
   text: string;
+  passage?: Passage;
 }
 
 export interface MessageHistory {
@@ -133,4 +146,15 @@ export interface FileExcerpt {
   capturedAt: string;
   unsaved: boolean;
   fingerprint: string;
+}
+
+export interface FileSource {
+  path: string;
+  excerpt?: FileExcerpt;
+}
+
+export interface FileNote {
+  id: string;
+  excerpt: FileExcerpt;
+  text: string;
 }

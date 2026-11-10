@@ -1,6 +1,8 @@
 import type { DesktopApi, Project } from '../shared/desktop-api.js';
 import { ChatPane } from './chat-pane.js';
 import { FileTree } from './file-tree.js';
+import { SelectionToolbar } from './selection-toolbar.js';
+import type { FileSource } from '../shared/notebook-api.js';
 import { WorkspaceEditor } from './workspace-editor.js';
 
 declare global {
@@ -42,20 +44,64 @@ const chat = new ChatPane(
   () => {
     if (workspace.dataset.view === 'editor') setView('chat');
   },
+  (notes) => editor.setNotes(notes),
 );
 editor.onBufferChange(() => void chat.refreshExcerptLinks(true));
-document
-  .querySelector('#ask-file-selection')!
-  .addEventListener('click', async () => {
-    try {
-      const excerpt = await editor.captureSelection();
+
+function openFileDiscussion(
+  projectId: string,
+  source: FileSource,
+): Promise<void> {
+  const previous = (workspace.dataset.view ?? 'editor') as View;
+  const setForProject = (view: View) => {
+    if (selected?.id === projectId) setView(view);
+  };
+  return chat.openFile(projectId, source, {
+    restore: () => setForProject(previous),
+    expand: () => setForProject('chat'),
+    collapse: () => setForProject('split'),
+  });
+}
+
+const selectionToolbar = new SelectionToolbar((range) => {
+  const capture = editor.captureSelection(range);
+  if (!capture) return chat.selection(range);
+  return {
+    annotate: async () => {
+      const excerpt = await capture();
+      if (selected?.id === excerpt.projectId) chat.annotateFile(excerpt);
+    },
+    ask: async () => {
+      const excerpt = await capture();
+      if (selected?.id === excerpt.projectId)
+        await openFileDiscussion(excerpt.projectId, {
+          path: excerpt.path,
+          excerpt,
+        });
+    },
+    add: async () => {
+      const excerpt = await capture();
       if (selected?.id !== excerpt.projectId) return;
       setView('split');
       await chat.attachExcerpt(excerpt);
-    } catch (error) {
-      showError(error);
-    }
-  });
+    },
+  };
+}, showError);
+
+document.querySelector('#ask-file')!.addEventListener('click', () => {
+  const source = editor.fileSource();
+  if (!source) return;
+  if (
+    source.unsaved &&
+    !window.confirm(
+      'Ask about the saved file on disk? Unsaved edits will stay in the editor.',
+    )
+  )
+    return;
+  void openFileDiscussion(source.projectId, { path: source.path }).catch(
+    showError,
+  );
+});
 const missing = document.querySelector<HTMLElement>('#missing-project')!;
 const locate = document.querySelector<HTMLButtonElement>('#locate-project')!;
 const tree = new FileTree(
@@ -74,10 +120,12 @@ document
 function renderView(): void {
   const view =
     available && selected ? (projectViews.get(selected.id) ?? 'chat') : 'chat';
-  if (workspace.dataset.view !== view)
+  if (workspace.dataset.view !== view) {
+    selectionToolbar.hide();
     chat.preserveScroll(() => {
       workspace.dataset.view = view;
     });
+  }
   for (const button of viewButtons) {
     button.setAttribute('aria-pressed', String(button.dataset.view === view));
     button.disabled = !available && button.dataset.view !== 'chat';
@@ -141,6 +189,7 @@ function selectProject(project: Project): void {
   views.hidden = false;
   chats.hidden = false;
   if (changed) {
+    selectionToolbar.hide();
     available = undefined;
     for (const restore of disclosures) restore(project.id);
     files.hidden = true;

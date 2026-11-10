@@ -175,3 +175,25 @@ every jump validates the range again before selecting it.
   composer. Runs that inherited the host Wayland display intermittently
   entered different text from the test fixtures. The isolated Xvfb run
   passed with the same executable and fixtures.
+
+## V2-02 · Selection and discussions
+
+- `npm run check` passed all 17 unit tests. The tests cover the format-1
+  upgrade, cross-project attachment rejection, immutable excerpts and chat
+  quotes, and exclusion of annotations from the submitted context. The
+  Codex protocol fixture verifies the file and passage fields sent to the
+  app server.
+- `npm run package:linux` built a scratch Debian package with the verified
+  Electron cache. The desktop entry passed `desktop-file-validate` and all
+  six desktop tests passed on the extracted executable under isolated Xvfb.
+- The desktop tests exercise the keyboard selection toolbar, repeated
+  phrases, preserved selection during an unrelated refresh, nested TeX
+  discussions, clickable highlights with overlapping links, expand and
+  back navigation, and attachment removal before sending. The file check
+  verifies annotations, file-side and whole-file questions, and saved
+  historical sources after a file changes and moves. The toolbar and side
+  chat were also inspected in a running desktop window.
+- Repeated the packaged desktop suite with the verified v1.0.0 executable
+  as the source of the backup. Restoring it in the new package preserved
+  project IDs, notes, revisions, and both source types. Saving a new chat
+  wrote format 2 while retaining the original conversations.

@@ -37,7 +37,7 @@ questions and selected context to the model service configured in the CLI.
 Quit ResOS before copying. The app keeps project IDs and locations in
 `projects.json` and conversation data in `notebook.json` under
 `${XDG_CONFIG_HOME:-$HOME/.config}/ResOS`. The notebook includes messages,
-revisions, notes, discussions, excerpts, and recorded runs. Keep the backup
+revisions, file and message notes, discussions, excerpts, and recorded runs. Keep the backup
 private because these files can contain sensitive text. Project files,
 Codex credentials, and in-session drafts are separate.
 
@@ -74,6 +74,10 @@ To use the restored profile as the default, quit ResOS, move the current
 directory from the restore profile into its place. Keep the original
 directory until you have checked the restored data. The desktop release uses
 its own notebook format, with [prototype import deferred](decisions/0002-notebook-storage.md).
+
+When a v1 notebook is opened in a newer build that supports annotations,
+its IDs and source links are preserved. The next saved change upgrades the
+notebook format. Keep a v1 backup if you need to reopen that data in v1.
 
 ## Build and test the release
 

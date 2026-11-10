@@ -58,6 +58,8 @@ for await (const line of createInterface({ input: process.stdin })) {
         assert.equal(question, 'review');
         assert.equal(JSON.parse(data).excerpts[0].text, 'captured TeX');
         assert.equal(JSON.parse(data).excerpts[0].unsaved, true);
+        assert.deepEqual(JSON.parse(data).fileSource, { path: 'notes.tex' });
+        assert.equal(JSON.parse(data).passages[0].quote, 'Pinned text');
         send({
           method: 'item/started',
           params: {

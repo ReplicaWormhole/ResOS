@@ -1,14 +1,20 @@
-import { validFileExcerpts } from '../shared/file-excerpt.js';
+import {
+  validFileExcerpt,
+  validFileExcerpts,
+  validFileSource,
+} from '../shared/file-excerpt.js';
 import type {
   ChatJob,
   ChatTurn,
   Conversation,
+  FileNote,
 } from '../shared/notebook-api.js';
 import { readJson, replaceJson } from '../storage/local-json.js';
 
 interface NotebookData {
-  version: 1;
+  version: 2;
   conversations: Conversation[];
+  fileNotes: FileNote[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,6 +36,19 @@ function isPassage(value: unknown): boolean {
   );
 }
 
+function arePassages(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 5 && value.every(isPassage);
+}
+
+function isFileNote(value: unknown): value is FileNote {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.text === 'string' &&
+    validFileExcerpt(value.excerpt)
+  );
+}
+
 function isContext(value: unknown): boolean {
   return (
     Array.isArray(value) &&
@@ -43,7 +62,8 @@ function isContext(value: unknown): boolean {
           (key) => entry[key] === undefined || typeof entry[key] === 'string',
         ) &&
         (entry.passage === undefined || isPassage(entry.passage)) &&
-        (entry.excerpts === undefined || validFileExcerpts(entry.excerpts)),
+        (entry.excerpts === undefined || validFileExcerpts(entry.excerpts)) &&
+        (entry.passages === undefined || arePassages(entry.passages)),
     )
   );
 }
@@ -69,7 +89,8 @@ function isHistory(value: Record<string, unknown>): boolean {
             isRecord(note) &&
             typeof note.id === 'string' &&
             typeof note.revisionId === 'string' &&
-            typeof note.text === 'string',
+            typeof note.text === 'string' &&
+            (note.passage === undefined || isPassage(note.passage)),
         )))
   );
 }
@@ -108,6 +129,7 @@ function isTurn(value: unknown): value is ChatTurn {
     typeof value.id === 'string' &&
     typeof value.question === 'string' &&
     (value.excerpts === undefined || validFileExcerpts(value.excerpts)) &&
+    (value.passages === undefined || arePassages(value.passages)) &&
     isHistory(value) &&
     Array.isArray(value.jobs) &&
     value.jobs.length > 0 &&
@@ -125,6 +147,10 @@ function isConversation(value: unknown): value is Conversation {
       (isRecord(value.source) &&
         isPassage(value.source) &&
         isContext(value.source.context))) &&
+    (value.fileSource === undefined ||
+      (validFileSource(value.fileSource) &&
+        (!value.fileSource.excerpt ||
+          value.fileSource.excerpt.projectId === value.projectId))) &&
     Array.isArray(value.turns) &&
     value.turns.every(isTurn)
   );
@@ -139,16 +165,24 @@ export class NotebookStore {
   private async load(): Promise<NotebookData> {
     if (this.data) return this.data;
     const data = await readJson(this.filePath);
-    if (data === undefined) return { version: 1, conversations: [] };
+    if (data === undefined)
+      return { version: 2, conversations: [], fileNotes: [] };
     if (
       !isRecord(data) ||
-      data.version !== 1 ||
+      (data.version !== 1 && data.version !== 2) ||
+      (data.version === 2 &&
+        (!Array.isArray(data.fileNotes) ||
+          !data.fileNotes.every(isFileNote))) ||
       !Array.isArray(data.conversations) ||
       !data.conversations.every(isConversation)
     ) {
       throw new Error('The saved notebook has an unsupported format.');
     }
-    return { version: 1, conversations: data.conversations };
+    return {
+      version: 2,
+      conversations: data.conversations,
+      fileNotes: data.version === 2 ? (data.fileNotes as FileNote[]) : [],
+    };
   }
 
   async list(projectId: string): Promise<Conversation[]> {
@@ -160,10 +194,21 @@ export class NotebookStore {
     );
   }
 
-  change<T>(update: (conversations: Conversation[]) => T): Promise<T> {
+  async listFileNotes(projectId: string): Promise<FileNote[]> {
+    await this.pendingWrite;
+    return structuredClone(
+      (await this.load()).fileNotes.filter(
+        (note) => note.excerpt.projectId === projectId,
+      ),
+    );
+  }
+
+  change<T>(
+    update: (conversations: Conversation[], fileNotes: FileNote[]) => T,
+  ): Promise<T> {
     const write = this.pendingWrite.then(async () => {
       const next = structuredClone(await this.load());
-      const result = update(next.conversations);
+      const result = update(next.conversations, next.fileNotes);
       await replaceJson(this.filePath, next);
       this.data = next;
       return structuredClone(result);

@@ -349,3 +349,122 @@ test('file excerpts stay with the original question, retries, and later context'
   const [reopened] = await new NotebookStore(path).list(project.id);
   assert.deepEqual(reopened.turns[0].excerpts, [excerpt]);
 });
+
+test('upgrades a v1 notebook and keeps annotations private while file and chat sources reach the runtime', async (t) => {
+  const path = await fixture(t);
+  const project = { id: 'project', root: '/workspace', name: 'Project' };
+  const original = {
+    id: 'legacy-chat',
+    projectId: project.id,
+    title: 'Legacy',
+    turns: [
+      {
+        id: 'original',
+        question: 'original passage',
+        jobs: [
+          {
+            id: 'answer',
+            cwd: project.root,
+            status: 'complete',
+            answer: 'old answer',
+          },
+        ],
+      },
+    ],
+  };
+  await writeFile(
+    path,
+    JSON.stringify({ version: 1, conversations: [original] }),
+  );
+  const store = new NotebookStore(path);
+  const requests = [];
+  const service = new ChatService(
+    store,
+    {
+      async *stream(request) {
+        requests.push(request);
+        yield 'new answer';
+      },
+    },
+    () => {},
+  );
+  assert.deepEqual(await store.list(project.id), [original]);
+  const excerpt = {
+    projectId: project.id,
+    path: 'notes.tex',
+    text: 'unsaved example',
+    start: 0,
+    end: 15,
+    startLine: 1,
+    endLine: 1,
+    capturedAt: '2026-11-10T12:00:00Z',
+    unsaved: true,
+    fingerprint: 'a'.repeat(64),
+  };
+  const passage = {
+    conversationId: original.id,
+    messageId: 'original',
+    revisionId: 'original',
+    start: 9,
+    end: 16,
+    quote: 'passage',
+  };
+  await service.addMessageNote(
+    project.id,
+    passage,
+    'private message note',
+    passage,
+  );
+  await service.addFileNote(project.id, excerpt, 'private file note');
+  await assert.rejects(
+    service.addFileNote('other', excerpt, 'invalid'),
+    /Invalid file excerpt/,
+  );
+  assert.deepEqual(await service.listFileNotes('other'), []);
+  const source = { path: excerpt.path, excerpt };
+  const fileChat = await service.createFileChat(project.id, source);
+  const other = await service.create('other');
+  await assert.rejects(
+    service.send(
+      { ...project, id: 'other' },
+      other.id,
+      'wrong scope',
+      'cross-project',
+      [],
+      [passage],
+    ),
+    /not found in this project/,
+  );
+  assert.equal(requests.length, 0);
+
+  await service.send(
+    project,
+    fileChat.id,
+    'Explain both',
+    'with-quote',
+    [],
+    [passage],
+  );
+  await until(() => !service.isRunning(project.id));
+  await assert.rejects(
+    service.send(project, fileChat.id, 'Explain both', 'with-quote'),
+    /different input/,
+  );
+  assert.deepEqual(requests[0].fileSource, source);
+  assert.deepEqual(requests[0].passages, [passage]);
+  await service.send(project, fileChat.id, 'Follow up', 'follow-up');
+  await until(() => !service.isRunning(project.id));
+  assert.deepEqual(requests[1].context[0].passages, [passage]);
+  assert.doesNotMatch(JSON.stringify(requests), /private (file|message) note/);
+
+  const reopened = new NotebookStore(path);
+  const [legacy, savedFile] = await reopened.list(project.id);
+  assert.equal(legacy.id, original.id);
+  assert.deepEqual(legacy.turns[0].notes[0].passage, passage);
+  assert.deepEqual(savedFile.fileSource, source);
+  assert.deepEqual(
+    (await reopened.listFileNotes(project.id))[0].excerpt,
+    excerpt,
+  );
+  assert.equal(JSON.parse(await readFile(path, 'utf8')).version, 2);
+});
