@@ -31,11 +31,15 @@ import type {
   ChatTurn,
   ContextOptions,
   ContextPreview,
+  HarnessCatalog,
+  RunSettings,
   MessageAddress,
   Passage,
   Conversation,
   FileNote,
 } from '../shared/notebook-api.js';
+
+import { validRunSettings } from '../shared/run-settings.js';
 
 interface ActiveJob {
   id?: string;
@@ -104,9 +108,10 @@ function resolveQuotes(
 function previewId(
   cwd: string,
   prepared: ReturnType<typeof prepareContext>,
+  settings?: RunSettings,
 ): string {
   return createHash('sha256')
-    .update(JSON.stringify([cwd, prepared]))
+    .update(JSON.stringify([cwd, prepared, settings]))
     .digest('hex');
 }
 
@@ -235,11 +240,49 @@ export class ChatService {
     return this.active.has(projectId);
   }
 
+  async harnessCatalog(cwd: string): Promise<HarnessCatalog> {
+    const models = this.runtime.listModels
+      ? await this.runtime.listModels(cwd)
+      : [];
+    if (this.runtime.listModels && !models.length)
+      throw new Error(
+        'Codex did not advertise any text models. Check the CLI sign-in and refresh the catalog.',
+      );
+    return {
+      harness: this.runtimeMode,
+      modes: this.runtimeMode === 'codex' ? ['ask', 'agent'] : ['ask'],
+      models,
+      supportsNotebookLookup: this.supportsNotebookLookup(),
+    };
+  }
+
+  private runSettings(value: unknown): RunSettings | undefined {
+    if (value === undefined) return;
+    if (!validRunSettings(value) || value.harness !== this.runtimeMode)
+      throw new Error('The requested harness or run settings are unavailable.');
+    const { harness, mode, model, effort } = value;
+    return {
+      harness,
+      mode,
+      ...(model ? { model } : {}),
+      ...(effort ? { effort } : {}),
+    };
+  }
+
   supportsNotebookLookup(): boolean {
     return this.runtime.supportsNotebookLookup === true;
   }
 
-  private contextOptions(value: unknown): ContextOptions {
+  private defaultSettings(): RunSettings {
+    return {
+      harness: this.runtimeMode,
+      mode: this.runtimeMode === 'codex' ? 'agent' : 'ask',
+    };
+  }
+
+  private contextOptions(
+    value: unknown,
+  ): ContextOptions & { settings: RunSettings } {
     if (!value || typeof value !== 'object')
       throw new Error('Invalid context settings.');
     const options = value as ContextOptions;
@@ -252,7 +295,11 @@ export class ChatService {
       throw new Error('Invalid context settings.');
     if (options.lookupEnabled && !this.supportsNotebookLookup())
       throw new Error('This harness does not support notebook lookup.');
-    return options;
+    return {
+      lookupEnabled: options.lookupEnabled,
+      previewId: options.previewId,
+      settings: this.runSettings(options.settings) ?? this.defaultSettings(),
+    };
   }
 
   async preview(
@@ -283,7 +330,8 @@ export class ChatService {
       ...prepared.input,
       context: prepared.context,
       cwd: project.root,
-      previewId: previewId(project.root, prepared),
+      previewId: previewId(project.root, prepared, options.settings),
+      settings: options.settings,
     };
   }
 
@@ -313,7 +361,11 @@ export class ChatService {
           !isDeepStrictEqual(existing.excerpts ?? [], savedExcerpts) ||
           !isDeepStrictEqual(existing.passages ?? [], savedPassages) ||
           (existing.jobs[0]?.input?.lookupEnabled ?? false) !==
-            options.lookupEnabled
+            options.lookupEnabled ||
+          !isDeepStrictEqual(
+            existing.jobs[0]?.settings ?? this.defaultSettings(),
+            options.settings,
+          )
         )
           throw new Error(
             'This request ID was already used for different input.',
@@ -333,7 +385,8 @@ export class ChatService {
       );
       if (
         options.previewId &&
-        options.previewId !== previewId(project.root, prepared)
+        options.previewId !==
+          previewId(project.root, prepared, options.settings)
       )
         throw new Error(
           'The input changed after the preview. Review the refreshed context and send again.',
@@ -356,6 +409,7 @@ export class ChatService {
             queueOrder: nextQueueOrder(chats),
             context: prepared.context,
             input: prepared.input,
+            settings: options.settings,
           },
         ],
       });
@@ -368,7 +422,9 @@ export class ChatService {
     chatId: string,
     jobId: string,
     confirmRelink: boolean,
+    rawSettings?: unknown,
   ): Promise<void> {
+    const overrides = this.runSettings(rawSettings);
     await this.notebook.change((chats) => {
       const chat = findChat(chats, project.id, chatId);
       const index = chat.turns.findIndex(
@@ -392,6 +448,27 @@ export class ChatService {
         throw new Error(
           'This harness no longer supports the saved notebook lookup setting.',
         );
+      if (
+        !overrides &&
+        original.runtime &&
+        original.runtime !== this.runtimeMode
+      )
+        throw new Error(
+          'The saved harness is unavailable. Choose available settings and start a new run.',
+        );
+      const saved =
+        overrides ??
+        this.runSettings(original.settings) ??
+        this.defaultSettings();
+      const model =
+        saved.model ??
+        (overrides ? undefined : original.effectiveSettings?.model);
+      const effort =
+        saved.effort ??
+        (overrides ? undefined : original.effectiveSettings?.effort);
+      const settings = model
+        ? { ...saved, model, ...(effort ? { effort } : {}) }
+        : saved;
       const savedContext = original.context ?? contextBefore(chat, index);
       const prepared = original.input
         ? { context: savedContext, input: original.input }
@@ -416,6 +493,7 @@ export class ChatService {
         queueOrder: nextQueueOrder(chats),
         context: prepared.context,
         input: prepared.input,
+        settings,
       });
     });
     this.start(project.id);
@@ -566,6 +644,7 @@ export class ChatService {
       for await (const chunk of this.runtime.stream(request, {
         signal,
         initialInput: job.input?.initialText,
+        settings: job.settings ?? this.defaultSettings(),
         ...(job.input?.lookupEnabled && this.supportsNotebookLookup()
           ? {
               lookupNotebook: async (rawQuery: string) => {
@@ -594,10 +673,11 @@ export class ChatService {
               },
             }
           : {}),
-        identify: (threadId, turnId) =>
+        identify: (threadId, turnId, effective) =>
           update((entry) => {
             entry.threadId = threadId;
             entry.turnId = turnId;
+            if (effective) entry.effectiveSettings = effective;
             if (job.input) entry.submittedAt = new Date().toISOString();
           }),
         approve: (detail, expires) => {

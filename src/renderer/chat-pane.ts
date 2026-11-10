@@ -11,6 +11,7 @@ import type {
   ChatTurn,
   Conversation,
   ContextPreview,
+  RunSettings,
   FileExcerpt,
   FileNote,
   FileSource,
@@ -19,6 +20,7 @@ import type {
   MessageRevision,
 } from '../shared/notebook-api.js';
 import { renderRichText } from './rich-text.js';
+import { RunSettingsControl } from './run-settings-control.js';
 import type { SelectionActions } from './selection-toolbar.js';
 
 const noExcerpts: FileExcerpt[] = [];
@@ -32,6 +34,7 @@ export class ChatPane {
     document.querySelector<HTMLTextAreaElement>('#chat-input')!;
   private readonly sendButton =
     document.querySelector<HTMLButtonElement>('#chat-send')!;
+  private readonly runSettings: RunSettingsControl;
   private readonly previewButton =
     document.querySelector<HTMLButtonElement>('#preview-context')!;
   private readonly lookup =
@@ -101,6 +104,7 @@ export class ChatPane {
       excerpts: FileExcerpt[];
       passages: Passage[];
       lookupEnabled: boolean;
+      settings: RunSettings;
       id: string;
     }
   >();
@@ -119,6 +123,7 @@ export class ChatPane {
     private readonly reveal: () => void,
     private readonly showNotes: (notes: FileNote[]) => void,
   ) {
+    this.runSettings = new RunSettingsControl(api, () => this.renderComposer());
     window.setInterval(() => void this.refreshExcerptLinks(), 1500);
     void api
       .chatRuntime()
@@ -642,6 +647,22 @@ export class ChatPane {
     }
   }
 
+  private async retry(
+    chat: Conversation,
+    job: ChatJob,
+    settings?: RunSettings,
+  ): Promise<void> {
+    const moved = this.root !== job.cwd;
+    if (
+      moved &&
+      !window.confirm(
+        'Run this attempt in the new project folder?\n' + this.root,
+      )
+    )
+      return;
+    await this.api.retryChat(chat.projectId, chat.id, job.id, moved, settings);
+  }
+
   private renderJob(
     chat: Conversation,
     turn: ChatTurn,
@@ -665,16 +686,12 @@ export class ChatPane {
       answer.append(note);
       if (this.available && turn.jobs.at(-1) === job) {
         answer.append(
-          this.action('Retry response', async () => {
-            const moved = this.root !== job.cwd;
-            if (
-              moved &&
-              !window.confirm(
-                'Run this attempt in the new project folder?\n' + this.root,
-              )
-            )
-              return;
-            await this.api.retryChat(chat.projectId, chat.id, job.id, moved);
+          this.action('Retry response', async () => this.retry(chat, job)),
+          this.action('Run with current settings', async () => {
+            const settings = this.runSettings.selected();
+            if (!settings)
+              throw new Error('Select available run settings first.');
+            await this.retry(chat, job, settings);
           }),
         );
       }
@@ -699,6 +716,9 @@ export class ChatPane {
       {
         cwd: job.cwd,
         runtime: job.runtime ?? 'demo',
+        requestedSettings: job.settings ?? 'Unknown for this older run',
+        effectiveSettings: job.effectiveSettings ?? 'Unavailable',
+
         status: job.status,
         requestId: job.requestId,
         retryOf: job.retryOf,
@@ -1187,6 +1207,8 @@ export class ChatPane {
     const projectId = this.projectId;
     const chat = this.current;
     if (!projectId || !chat || this.previewButton.disabled) return;
+    const settings = this.runSettings.selected();
+    if (!settings) return;
     const question = this.input.value;
     const excerpts = this.draftExcerpts.get(chat.id) ?? noExcerpts;
     const passages = this.draftPassages.get(chat.id) ?? noPassages;
@@ -1204,7 +1226,7 @@ export class ChatPane {
         question,
         excerpts,
         passages,
-        { lookupEnabled },
+        { lookupEnabled, settings },
       );
       if (!dialog.open) return;
       this.showContextPreview(dialog, info, preview);
@@ -1241,6 +1263,14 @@ export class ChatPane {
       (preview.lookupEnabled
         ? ' · Notebook lookup enabled'
         : ' · Notebook lookup off');
+    if (preview.settings) {
+      const { harness, mode, model, effort } = preview.settings;
+      const settings = document.createElement('p');
+      settings.textContent = [harness, mode, model, effort]
+        .filter(Boolean)
+        .join(' · ');
+      dialog.append(settings);
+    }
     const input = this.contextDetail('Initial input', preview.initialText);
     input.open = true;
     dialog.append(details, input);
@@ -1255,6 +1285,8 @@ export class ChatPane {
 
   private renderComposer(): void {
     const id = this.projectId;
+    this.runSettings.show(id, this.available);
+    this.runSettings.selectChat(this.current?.id);
     const busy = this.chats.some((chat) =>
       chat.turns.some((turn) =>
         turn.jobs.some(
@@ -1267,6 +1299,7 @@ export class ChatPane {
       !this.current ||
       !this.available ||
       Boolean(id && this.submitting.has(id)) ||
+      !this.runSettings.selected() ||
       !this.input.value.trim();
     this.previewButton.disabled = this.sendButton.disabled;
     this.lookup.disabled =
@@ -1309,7 +1342,8 @@ export class ChatPane {
     const id = this.projectId;
     const chat = this.current;
     const question = this.input.value;
-    if (!id || !chat || this.sendButton.disabled) return;
+    const settings = this.runSettings.selected();
+    if (!id || !chat || !settings || this.sendButton.disabled) return;
     this.submitting.add(id);
     this.error.hidden = true;
     this.renderComposer();
@@ -1322,13 +1356,15 @@ export class ChatPane {
         request?.question !== question ||
         request?.excerpts !== excerpts ||
         request?.passages !== passages ||
-        request?.lookupEnabled !== lookupEnabled
+        request?.lookupEnabled !== lookupEnabled ||
+        request?.settings !== settings
       ) {
         request = {
           question,
           excerpts,
           passages,
           lookupEnabled,
+          settings,
           id: crypto.randomUUID(),
         };
         this.requestIds.set(chat.id, request);
@@ -1340,7 +1376,7 @@ export class ChatPane {
         request.id,
         excerpts,
         passages,
-        { lookupEnabled, previewId },
+        { lookupEnabled, previewId, settings },
       );
       this.requestIds.delete(chat.id);
       this.lookupDrafts.delete(chat.id);

@@ -697,3 +697,99 @@ test('previews bounded input, rejects a stale review, and retries the same paylo
   assert.equal(retry.lookups, undefined);
   assert.deepEqual(requests[1], requests[0]);
 });
+
+test('queued settings stay immutable and a replacement run explicitly changes only settings', async (t) => {
+  const path = await fixture(t);
+  const store = new NotebookStore(path);
+  const project = { id: 'p', root: '/workspace', name: 'Project' };
+  const seen = [];
+  const gate = Promise.withResolvers();
+  const service = new ChatService(
+    store,
+    {
+      async *stream({ question }, controls) {
+        seen.push({
+          question,
+          settings: controls.settings,
+          input: controls.initialInput,
+        });
+        if (question === 'hold') {
+          await gate.promise;
+          yield 'done';
+          return;
+        }
+        if (controls.settings.model === 'retired')
+          throw new Error('saved model is unavailable');
+        await controls.identify('thread', 'turn', {
+          model: controls.settings.model,
+          effort: controls.settings.effort,
+        });
+        yield 'done';
+      },
+    },
+    () => {},
+    'codex',
+  );
+  const chat = await service.create(project.id);
+  const settings = {
+    harness: 'codex',
+    mode: 'ask',
+    model: 'retired',
+    effort: 'low',
+  };
+  try {
+    await service.send(project, chat.id, 'hold', 'hold');
+    const preview = await service.preview(project, chat.id, 'queued', [], [], {
+      lookupEnabled: false,
+      settings,
+    });
+    await assert.rejects(
+      service.send(project, chat.id, 'queued', 'changed-review', [], [], {
+        lookupEnabled: false,
+        settings: { ...settings, mode: 'agent' },
+        previewId: preview.previewId,
+      }),
+      /input changed after the preview/,
+    );
+    await service.send(project, chat.id, 'queued', 'queued', [], [], {
+      lookupEnabled: false,
+      settings,
+      previewId: preview.previewId,
+    });
+    settings.model = 'replacement';
+    settings.effort = 'high';
+    settings.mode = 'agent';
+    const [queued] = await service.list(project.id);
+    assert.equal(queued.turns[1].jobs[0].status, 'queued');
+    assert.deepEqual(queued.turns[1].jobs[0].settings, {
+      harness: 'codex',
+      mode: 'ask',
+      model: 'retired',
+      effort: 'low',
+    });
+  } finally {
+    gate.resolve();
+  }
+  await until(() => !service.isRunning(project.id));
+  const [failed] = await service.list(project.id);
+  const original = failed.turns[1].jobs[0];
+  assert.equal(original.status, 'failed');
+  await service.retry(project, chat.id, original.id, false);
+  await until(() => !service.isRunning(project.id));
+  const [stillFailed] = await service.list(project.id);
+  const retry = stillFailed.turns[1].jobs[1];
+  assert.equal(retry.status, 'failed');
+  assert.deepEqual(seen[1], seen[2]);
+  await service.retry(project, chat.id, retry.id, false, settings);
+  await until(() => !service.isRunning(project.id));
+  const [reopened] = await new NotebookStore(path).list(project.id);
+  const replacement = reopened.turns[1].jobs[2];
+  assert.equal(replacement.status, 'complete');
+  assert.deepEqual(replacement.settings, settings);
+  assert.deepEqual(replacement.effectiveSettings, {
+    model: 'replacement',
+    effort: 'high',
+  });
+  assert.deepEqual(replacement.input, original.input);
+  assert.equal(seen[3].input, seen[1].input);
+});

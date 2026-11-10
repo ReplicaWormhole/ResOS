@@ -76,6 +76,24 @@ Its conversation history stays accessible while the folder is missing.
 Choose the new location to re-enable the editor and sending. The notebook
 is saved beside the registry in the app data directory as `notebook.json`.
 
+## Choose Codex settings
+
+Use **Mode**, **Model**, and **Reasoning effort** in the composer. ResOS lists
+the text models and effort levels reported by your signed-in Codex CLI.
+**Refresh models** updates the list. Effort controls how the model reasons.
+The context preview separately shows the amount of notebook input.
+
+**Ask** starts with read-only tools and disables escalation. **Agent**
+allows writes in the project and asks before escalating permissions. Scoped
+runs disable Codex hooks, external MCP servers, plugins, apps, and web
+search for the run. The selected mode and permission summary appear next
+to the composer.
+
+ResOS saves the requested settings at queue time and records the model and
+effort Codex confirms. **Retry response** keeps those choices. If a saved
+model becomes unavailable, choose an available setting and use **Run with
+current settings** on the failed attempt to submit the same saved input.
+
 ## Preview and inspect context
 
 Use **Preview context** to see the initial input, the project folder, and

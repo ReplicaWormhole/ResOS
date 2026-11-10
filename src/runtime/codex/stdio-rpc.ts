@@ -20,21 +20,34 @@ export class StdioRpc extends EventEmitter {
   private nextId = 0;
   private failure?: Error;
 
-  constructor(executable: string, cwd: string) {
+  constructor(
+    executable: string,
+    cwd: string,
+    overrides: readonly string[] = [],
+  ) {
     super();
-    this.child = spawn(executable, ['app-server', '--listen', 'stdio://'], {
-      cwd,
-      env: isAbsolute(executable)
-        ? {
-            ...process.env,
-            PATH: [dirname(executable), process.env.PATH]
-              .filter(Boolean)
-              .join(delimiter),
-          }
-        : process.env,
-      detached: true,
-      stdio: 'pipe',
-    });
+    this.child = spawn(
+      executable,
+      [
+        ...overrides.flatMap((item) => ['-c', item]),
+        'app-server',
+        '--listen',
+        'stdio://',
+      ],
+      {
+        cwd,
+        env: isAbsolute(executable)
+          ? {
+              ...process.env,
+              PATH: [dirname(executable), process.env.PATH]
+                .filter(Boolean)
+                .join(delimiter),
+            }
+          : process.env,
+        detached: true,
+        stdio: 'pipe',
+      },
+    );
     this.child.on('error', (error) =>
       this.fail(
         new Error(

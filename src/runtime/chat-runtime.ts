@@ -1,6 +1,9 @@
 import type {
   ApprovalRequest,
   ContextEntry,
+  EffectiveRunSettings,
+  HarnessModel,
+  RunSettings,
   FileExcerpt,
   FileSource,
   NotebookMatch,
@@ -21,8 +24,13 @@ export interface ChatRequest {
 export interface RuntimeControls {
   readonly signal: AbortSignal;
   readonly initialInput?: string;
+  readonly settings?: RunSettings;
   lookupNotebook?(query: string): Promise<NotebookMatch[]>;
-  identify?(threadId: string, turnId: string): Promise<void>;
+  identify?(
+    threadId: string,
+    turnId: string,
+    effective?: EffectiveRunSettings,
+  ): Promise<void>;
   approve(
     request: Omit<ApprovalRequest, 'id' | 'jobId' | 'chatId'>,
     expires?: AbortSignal,
@@ -32,6 +40,7 @@ export interface RuntimeControls {
 export interface ChatRuntime {
   readonly inputLimitBytes?: number;
   readonly supportsNotebookLookup?: boolean;
+  listModels?(cwd: string): Promise<HarnessModel[]>;
   stream(
     request: ChatRequest,
     controls: RuntimeControls,

@@ -8,6 +8,27 @@ const turnId = 'fixture-turn';
 let action;
 let stage = 0;
 let lookupEnabled = false;
+let requestedModel;
+let requestedEffort;
+let scoped = false;
+let ask = false;
+const flags = process.argv.slice(2);
+const fixtureModel = (
+  model,
+  displayName,
+  efforts,
+  defaultReasoningEffort,
+  isDefault,
+) => ({
+  model,
+  displayName,
+  supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
+    reasoningEffort,
+  })),
+  defaultReasoningEffort,
+  isDefault,
+  inputModalities: ['text'],
+});
 function completed(status) {
   send({
     method: 'turn/completed',
@@ -25,23 +46,123 @@ for await (const line of createInterface({ input: process.stdin })) {
     case 'initialized':
       assert.equal(stage++, 1);
       break;
+    case 'model/list':
+      assert.equal(params.includeHidden, false);
+      send({
+        id,
+        result:
+          params.cursor === 'next'
+            ? {
+                data: [
+                  fixtureModel(
+                    'fixture-b',
+                    'Fixture B',
+                    ['high'],
+                    'high',
+                    false,
+                  ),
+                ],
+                nextCursor: null,
+              }
+            : {
+                data: [
+                  fixtureModel(
+                    'fixture-a',
+                    'Fixture A',
+                    ['low', 'medium'],
+                    'medium',
+                    true,
+                  ),
+                  {
+                    ...fixtureModel('hidden', 'Hidden model', [], null, false),
+                    hidden: true,
+                  },
+                  {
+                    ...fixtureModel(
+                      'image-only',
+                      'Image model',
+                      [],
+                      null,
+                      false,
+                    ),
+                    inputModalities: ['image'],
+                  },
+                ],
+                nextCursor: 'next',
+              },
+      });
+      break;
+    case 'config/read': {
+      const features = Object.fromEntries(
+        flags
+          .filter((arg) => /^features\.[a-z_]+=false$/.test(arg))
+          .map((arg) => [arg.slice(9, -6), false]),
+      );
+      assert.equal(params.cwd, process.cwd());
+      scoped = true;
+      send({
+        id,
+        result: {
+          config: {
+            features,
+            web_search: flags.includes('web_search="disabled"')
+              ? 'disabled'
+              : 'live',
+            mcp_servers: {
+              fixture: {
+                enabled: !flags.includes('mcp_servers.fixture.enabled=false'),
+              },
+            },
+          },
+        },
+      });
+      break;
+    }
     case 'thread/start':
       assert.equal(stage++, 2);
       assert.equal(params.ephemeral, true);
-      assert.equal(params.sandbox, 'workspace-write');
+      ask = params.sandbox === 'read-only';
+      assert.equal(params.sandbox, ask ? 'read-only' : 'workspace-write');
+      assert.equal(params.approvalPolicy, ask ? 'never' : 'on-request');
+      requestedModel = params.model;
+      requestedEffort = params.config?.model_reasoning_effort;
+      if (scoped)
+        assert.ok(flags.includes('mcp_servers.fixture.enabled=false'));
       assert.equal(params.approvalsReviewer, 'user');
       assert.equal(params.cwd, process.cwd());
       if (lookupEnabled) {
         assert.equal(params.dynamicTools[0].name, 'resos_search_notebook');
         assert.equal(params.dynamicTools[0].type, 'function');
       } else assert.equal(params.dynamicTools, undefined);
-      send({ id, result: { thread: { id: threadId } } });
+      send({
+        id,
+        result: {
+          thread: { id: threadId },
+          ...(scoped
+            ? {
+                model: requestedModel ?? 'fixture-a',
+                reasoningEffort: requestedEffort ?? 'medium',
+                cwd: process.cwd(),
+                approvalPolicy: params.approvalPolicy,
+                sandbox: { type: ask ? 'readOnly' : 'workspaceWrite' },
+              }
+            : {}),
+        },
+      });
       break;
     case 'turn/start':
       assert.equal(stage++, 3);
-      assert.deepEqual(params.sandboxPolicy.writableRoots, [process.cwd()]);
+      if (ask)
+        assert.deepEqual(params.sandboxPolicy, {
+          type: 'readOnly',
+          networkAccess: false,
+        });
+      else
+        assert.deepEqual(params.sandboxPolicy.writableRoots, [process.cwd()]);
       assert.equal(params.sandboxPolicy.networkAccess, false);
-      assert.equal(params.approvalPolicy, 'on-request');
+      assert.equal(params.approvalPolicy, ask ? 'never' : 'on-request');
+      assert.equal(params.model, requestedModel);
+      assert.equal(params.effort, requestedEffort);
       action = params.input[0].text;
       send({ id, result: { turn: { id: turnId } } });
       send({
@@ -74,6 +195,22 @@ for await (const line of createInterface({ input: process.stdin })) {
               arguments: { query: 'fixture' },
             },
           });
+      }
+      if (action === 'configured ask' || action === 'configured agent') {
+        assert.equal(ask, action === 'configured ask');
+        assert.equal(scoped, true);
+        assert.equal(requestedModel, 'fixture-b');
+        assert.equal(requestedEffort, 'high');
+        send({
+          id: 'scoped-approval',
+          method: 'item/commandExecution/requestApproval',
+          params: {
+            threadId,
+            turnId,
+            command: 'write fixture',
+            cwd: process.cwd(),
+          },
+        });
       }
       if (action.includes('review')) {
         const [notice, data, label, question] = action.split('\n\n');
@@ -119,6 +256,20 @@ for await (const line of createInterface({ input: process.stdin })) {
           JSON.parse(result.contentItems[0].text)[0].excerpt,
           'fixture result',
         );
+        completed('completed');
+        break;
+      }
+      if (id === 'scoped-approval') {
+        assert.equal(result.decision, ask ? 'decline' : 'accept');
+        send({
+          method: 'item/agentMessage/delta',
+          params: {
+            threadId,
+            turnId,
+            itemId: 'message',
+            delta: ask ? 'read-only' : 'agent approved',
+          },
+        });
         completed('completed');
         break;
       }

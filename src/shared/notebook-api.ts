@@ -33,11 +33,43 @@ export interface ContextPreview extends PreparedInput {
   context: ContextEntry[];
   previewId: string;
   cwd: string;
+  settings?: RunSettings;
 }
 
 export interface ContextOptions {
   lookupEnabled: boolean;
   previewId?: string;
+  settings?: RunSettings;
+}
+
+export type Harness = 'demo' | 'codex';
+export type RunMode = 'ask' | 'agent';
+
+export interface RunSettings {
+  harness: Harness;
+  mode: RunMode;
+  model?: string;
+  effort?: string;
+}
+
+export interface EffectiveRunSettings {
+  model?: string;
+  effort?: string;
+}
+
+export interface HarnessModel {
+  id: string;
+  label: string;
+  efforts: string[];
+  defaultEffort?: string;
+  isDefault: boolean;
+}
+
+export interface HarnessCatalog {
+  harness: Harness;
+  modes: RunMode[];
+  models: HarnessModel[];
+  supportsNotebookLookup: boolean;
 }
 
 export interface NotebookMatch extends MessageAddress {
@@ -66,6 +98,8 @@ export interface ChatJob extends MessageHistory {
   answer: string;
   context?: ContextEntry[];
   input?: PreparedInput;
+  settings?: RunSettings;
+  effectiveSettings?: EffectiveRunSettings;
   submittedAt?: string;
   lookups?: NotebookLookup[];
   runtime?: 'demo' | 'codex';
@@ -129,6 +163,7 @@ export interface ChatApi {
     chatId: string,
     jobId: string,
     confirmRelink: boolean,
+    settings?: RunSettings,
   ): Promise<void>;
   listApprovals(projectId: string): Promise<ApprovalRequest[]>;
   decideApproval(
@@ -138,6 +173,7 @@ export interface ChatApi {
   ): Promise<void>;
   chatRuntime(): Promise<'demo' | 'codex'>;
   supportsNotebookLookup(): Promise<boolean>;
+  harnessCatalog(projectId: string): Promise<HarnessCatalog>;
   reviseMessage(
     projectId: string,
     address: MessageAddress,

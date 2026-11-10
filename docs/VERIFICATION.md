@@ -217,3 +217,27 @@ every jump validates the range again before selecting it.
   project. The saved submitted text matched the review, and lookup was
   off for the next draft. The byte cap covers the app's initial text.
   Harness-added input and later tool results have separate limits.
+
+## V2-04 · Codex controls
+
+- `npm run check` passed all 23 unit tests. The protocol fixtures cover
+  paginated model discovery, hidden and incompatible models, missing model
+  and effort choices, confirmation of effective settings, Ask's denial
+  of escalation, Agent approvals, and cancellation at the end of scoped
+  setup. The notebook tests verify that preview and queue bind the selected
+  settings, and that retries retain them until an explicit replacement.
+- `npm run package:linux` built a scratch package using the verified Electron
+  cache. The desktop entry passed `desktop-file-validate` and all seven
+  desktop tests passed against the extracted executable in isolated Xvfb.
+  The settings test used the Codex protocol fixture through the composer.
+  The backup fixture restored data from the verified v1.0.0 executable.
+- Two live source-build turns with Codex CLI 0.167.0 used a supported model
+  and effort selected in the desktop composer. Ask read a disposable file
+  and Agent wrote a disposable file inside the same project. Both runs
+  recorded the confirmed model and effort. A separate `command/exec` probe
+  using the same policies verified that read-only denied a write and
+  workspace-write allowed an in-project write and denied a sibling write.
+- A disposable Codex configuration with an MCP startup sentinel confirmed
+  that discovery did not start the server. A per-server override disabled
+  it. The adapter verifies these overrides at runtime and fails if policy
+  requirements prevent their application.

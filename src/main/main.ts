@@ -145,6 +145,9 @@ function registerDesktopHandlers(
       );
     },
   );
+  ipcMain.handle('chats:harness-catalog', async (event, id) =>
+    chats.harnessCatalog((await availableProject(event, id)).root),
+  );
   ipcMain.handle('chats:lookup-supported', (event) => {
     requireAppFrame(event);
     return chats.supportsNotebookLookup();
@@ -191,23 +194,26 @@ function registerDesktopHandlers(
       throw new Error('Invalid job ID.');
     await chats.stop((await projectFor(event, id)).id, jobId);
   });
-  ipcMain.handle('chats:retry', (event, id, chatId, jobId, confirmRelink) =>
-    changeWorkspace(async () => {
-      if (
-        typeof chatId !== 'string' ||
-        chatId.length > 128 ||
-        typeof jobId !== 'string' ||
-        jobId.length > 128 ||
-        typeof confirmRelink !== 'boolean'
-      )
-        throw new Error('Invalid retry.');
-      await chats.retry(
-        await availableProject(event, id),
-        chatId,
-        jobId,
-        confirmRelink,
-      );
-    }),
+  ipcMain.handle(
+    'chats:retry',
+    (event, id, chatId, jobId, confirmRelink, settings) =>
+      changeWorkspace(async () => {
+        if (
+          typeof chatId !== 'string' ||
+          chatId.length > 128 ||
+          typeof jobId !== 'string' ||
+          jobId.length > 128 ||
+          typeof confirmRelink !== 'boolean'
+        )
+          throw new Error('Invalid retry.');
+        await chats.retry(
+          await availableProject(event, id),
+          chatId,
+          jobId,
+          confirmRelink,
+          settings,
+        );
+      }),
   );
   ipcMain.handle('chats:approvals', async (event, id) =>
     chats.listApprovals((await projectFor(event, id)).id),

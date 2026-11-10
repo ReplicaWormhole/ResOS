@@ -10,6 +10,7 @@ import type {
   Conversation,
   FileNote,
 } from '../shared/notebook-api.js';
+import { validRunSettings, validSettingId } from '../shared/run-settings.js';
 import { readJson, replaceJson } from '../storage/local-json.js';
 import {
   MAX_LOOKUP_QUERY,
@@ -172,6 +173,13 @@ function isJob(value: unknown): value is ChatJob {
     (value.retryOf === undefined || typeof value.retryOf === 'string') &&
     (value.context === undefined || isContext(value.context)) &&
     (value.input === undefined || isInput(value.input)) &&
+    (value.settings === undefined || validRunSettings(value.settings)) &&
+    (value.effectiveSettings === undefined ||
+      (isRecord(value.effectiveSettings) &&
+        (value.effectiveSettings.model === undefined ||
+          validSettingId(value.effectiveSettings.model)) &&
+        (value.effectiveSettings.effort === undefined ||
+          validSettingId(value.effectiveSettings.effort)))) &&
     (value.lookups === undefined ||
       (Array.isArray(value.lookups) &&
         value.lookups.length <= MAX_NOTEBOOK_LOOKUPS &&

@@ -582,3 +582,34 @@ p {
 .composer-actions #chat-send {
   margin-inline-start: auto;
 }
+
+.run-settings-options {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.run-settings-options > div {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.run-settings-options select {
+  color: inherit;
+  background: var(--rail);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-width: 13em;
+  font: inherit;
+}
+
+.run-settings-options button {
+  flex: 0 0 auto;
+}
+
+#run-settings-status {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}

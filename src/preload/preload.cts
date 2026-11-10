@@ -13,6 +13,7 @@ const api: DesktopApi = {
   listFileNotes: (id) => ipcRenderer.invoke('chats:file-notes', id),
   addFileNote: (id, excerpt, text) =>
     ipcRenderer.invoke('chats:file-note', id, excerpt, text),
+  harnessCatalog: (id) => ipcRenderer.invoke('chats:harness-catalog', id),
   supportsNotebookLookup: () => ipcRenderer.invoke('chats:lookup-supported'),
   previewContext: (id, chatId, question, excerpts, passages, options) =>
     ipcRenderer.invoke(
@@ -36,8 +37,8 @@ const api: DesktopApi = {
       options,
     ),
   stopChat: (id, jobId) => ipcRenderer.invoke('chats:stop', id, jobId),
-  retryChat: (id, chatId, jobId, confirm) =>
-    ipcRenderer.invoke('chats:retry', id, chatId, jobId, confirm),
+  retryChat: (id, chatId, jobId, confirm, settings) =>
+    ipcRenderer.invoke('chats:retry', id, chatId, jobId, confirm, settings),
   listApprovals: (id) => ipcRenderer.invoke('chats:approvals', id),
   decideApproval: (id, approvalId, accept) =>
     ipcRenderer.invoke('chats:approval', id, approvalId, accept),

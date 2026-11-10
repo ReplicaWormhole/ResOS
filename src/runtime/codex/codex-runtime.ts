@@ -5,6 +5,12 @@ import type {
   RuntimeControls,
 } from '../chat-runtime.js';
 import { formatInitialInput } from '../../notebook/prepare-context.js';
+import type { HarnessModel } from '../../shared/notebook-api.js';
+import {
+  validSettingId,
+  validateModelSelection,
+} from '../../shared/run-settings.js';
+import { codexModels } from './model-catalog.js';
 import { object, StdioRpc } from './stdio-rpc.js';
 
 const approvalMethods = new Map([
@@ -28,6 +34,22 @@ const notebookTool = {
   },
 };
 
+const disabledFeatures = [
+  'apps',
+  'hooks',
+  'plugins',
+  'remote_plugin',
+  'skill_mcp_dependency_install',
+  'multi_agent',
+  'in_app_browser',
+  'in_app_local_automation',
+];
+
+const scopedOverrides = [
+  ...disabledFeatures.map((feature) => 'features.' + feature + '=false'),
+  'web_search="disabled"',
+];
+
 export class CodexRuntime implements ChatRuntime {
   readonly supportsNotebookLookup = true;
   private readonly clients = new Set<StdioRpc>();
@@ -41,13 +63,109 @@ export class CodexRuntime implements ChatRuntime {
     for (const client of this.clients) client.close();
   }
 
+  private async connect(
+    cwd: string,
+    overrides: readonly string[],
+    experimental: boolean,
+    signal?: AbortSignal,
+  ): Promise<StdioRpc> {
+    signal?.throwIfAborted();
+    const client = new StdioRpc(this.executable, cwd, overrides);
+    this.clients.add(client);
+    const cancel = () => client.close();
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      await client.call('initialize', {
+        ...(experimental ? { capabilities: { experimentalApi: true } } : {}),
+        clientInfo: {
+          name: 'resos',
+          title: 'ResOS',
+          version: this.clientVersion,
+        },
+      });
+      client.notify('initialized');
+      return client;
+    } catch (error) {
+      this.disconnect(client);
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+    }
+  }
+
+  private disconnect(client: StdioRpc): void {
+    this.clients.delete(client);
+    client.close();
+  }
+
+  async listModels(cwd: string): Promise<HarnessModel[]> {
+    const client = await this.connect(cwd, scopedOverrides, false);
+    try {
+      return await codexModels(client);
+    } finally {
+      this.disconnect(client);
+    }
+  }
+
+  private async scopedClient(
+    cwd: string,
+    controls: RuntimeControls,
+  ): Promise<StdioRpc> {
+    const experimental = !!controls.lookupNotebook;
+    const open = (overrides: readonly string[]) =>
+      this.connect(cwd, overrides, experimental, controls.signal);
+    let client = await open(controls.settings ? scopedOverrides : []);
+    if (!controls.settings) return client;
+    const cancel = () => client.close();
+    controls.signal.addEventListener('abort', cancel, { once: true });
+    try {
+      const read = async () =>
+        object((await client.call('config/read', { cwd })).config);
+      const enabledMcp = (config: Record<string, unknown>) =>
+        Object.entries(object(config.mcp_servers))
+          .filter(([, value]) => object(value).enabled !== false)
+          .map(([name]) => name);
+      let config = await read();
+      const servers = enabledMcp(config);
+      if (servers.length) {
+        if (servers.some((name) => !/^[A-Za-z0-9_-]+$/.test(name)))
+          throw new Error(
+            'Codex has an MCP server name that cannot be disabled safely.',
+          );
+        this.disconnect(client);
+        client = await open([
+          ...scopedOverrides,
+          ...servers.map((name) => 'mcp_servers.' + name + '.enabled=false'),
+        ]);
+        config = await read();
+      }
+      const features = object(config.features);
+      if (
+        config.web_search !== 'disabled' ||
+        disabledFeatures.some((feature) => features[feature] !== false) ||
+        enabledMcp(config).length
+      ) {
+        throw new Error(
+          'Codex could not verify that external tools are disabled for this scoped run.',
+        );
+      }
+      return client;
+    } catch (error) {
+      this.disconnect(client);
+      throw error;
+    } finally {
+      controls.signal.removeEventListener('abort', cancel);
+    }
+  }
+
   async *stream(
     request: ChatRequest,
     controls: RuntimeControls,
   ): AsyncGenerator<string> {
     controls.signal.throwIfAborted();
-    const client = new StdioRpc(this.executable, request.cwd);
-    this.clients.add(client);
+    const client = await this.scopedClient(request.cwd, controls);
+    const ask = controls.settings?.mode === 'ask';
+    const approvalPolicy = ask ? 'never' : 'on-request';
     const events = new EventEmitter();
     const notifications = on(events, 'message');
     let threadId: string | undefined;
@@ -187,7 +305,7 @@ export class CodexRuntime implements ChatRuntime {
         const expires = new AbortController();
         requests.set(id, expires);
         const decide =
-          scope && reviewable && !controls.signal.aborted
+          !ask && scope && reviewable && !controls.signal.aborted
             ? controls.approve({ kind, detail }, expires.signal)
             : Promise.resolve(false);
         void decide
@@ -209,21 +327,18 @@ export class CodexRuntime implements ChatRuntime {
     );
 
     try {
-      await client.call('initialize', {
-        ...(controls.lookupNotebook
-          ? { capabilities: { experimentalApi: true } }
-          : {}),
-        clientInfo: {
-          name: 'resos',
-          title: 'ResOS',
-          version: this.clientVersion,
-        },
-      });
-      client.notify('initialized');
+      controls.signal.throwIfAborted();
+      const settings = controls.settings;
+      if (settings?.model)
+        validateModelSelection(await codexModels(client), settings);
       const started = await client.call('thread/start', {
         cwd: request.cwd,
-        sandbox: 'workspace-write',
-        approvalPolicy: 'on-request',
+        sandbox: ask ? 'read-only' : 'workspace-write',
+        approvalPolicy,
+        ...(settings?.model ? { model: settings.model } : {}),
+        ...(settings?.effort
+          ? { config: { model_reasoning_effort: settings.effort } }
+          : {}),
         approvalsReviewer: 'user',
         ephemeral: true,
         ...(controls.lookupNotebook ? { dynamicTools: [notebookTool] } : {}),
@@ -232,18 +347,45 @@ export class CodexRuntime implements ChatRuntime {
       if (typeof id !== 'string')
         throw new Error('Codex did not return a thread ID.');
       threadId = id;
+      const effective = {
+        ...(validSettingId(started.model) ? { model: started.model } : {}),
+        ...(validSettingId(started.reasoningEffort)
+          ? { effort: started.reasoningEffort }
+          : {}),
+      };
+      if (
+        settings &&
+        (started.approvalPolicy !== approvalPolicy ||
+          started.cwd !== request.cwd ||
+          object(started.sandbox).type !==
+            (ask ? 'readOnly' : 'workspaceWrite'))
+      )
+        throw new Error(
+          'Codex did not confirm the requested workspace and permissions.',
+        );
+      if (
+        (settings?.model && effective.model !== settings.model) ||
+        (settings?.effort && effective.effort !== settings.effort)
+      )
+        throw new Error(
+          'Codex did not confirm the requested model or reasoning effort. Refresh the catalog and start a new run.',
+        );
       const turn = await client.call('turn/start', {
         threadId,
         cwd: request.cwd,
-        approvalPolicy: 'on-request',
+        approvalPolicy,
         approvalsReviewer: 'user',
-        sandboxPolicy: {
-          type: 'workspaceWrite',
-          writableRoots: [request.cwd],
-          networkAccess: false,
-          excludeTmpdirEnvVar: true,
-          excludeSlashTmp: true,
-        },
+        ...(settings?.model ? { model: settings.model } : {}),
+        ...(settings?.effort ? { effort: settings.effort } : {}),
+        sandboxPolicy: ask
+          ? { type: 'readOnly', networkAccess: false }
+          : {
+              type: 'workspaceWrite',
+              writableRoots: [request.cwd],
+              networkAccess: false,
+              excludeTmpdirEnvVar: true,
+              excludeSlashTmp: true,
+            },
         input: [
           {
             type: 'text',
@@ -258,7 +400,11 @@ export class CodexRuntime implements ChatRuntime {
       if (typeof startedTurnId !== 'string')
         throw new Error('Codex did not return a turn ID.');
       turnId = startedTurnId;
-      await controls.identify?.(threadId, turnId);
+      await controls.identify?.(
+        threadId,
+        turnId,
+        effective.model || effective.effort ? effective : undefined,
+      );
       for await (const [method, raw] of notifications) {
         const params = object(raw);
         if (method === 'closed') throw params.error;
@@ -297,8 +443,7 @@ export class CodexRuntime implements ChatRuntime {
       clearTimeout(stopTimer);
       controls.signal.removeEventListener('abort', stop);
       await notifications.return?.();
-      this.clients.delete(client);
-      client.close();
+      this.disconnect(client);
     }
   }
 }

@@ -111,3 +111,124 @@ test('Codex sends the exact prepared input and rejects notebook calls outside th
     assert.equal(chunk, 'partial ');
   assert.deepEqual(seen, ['fixture']);
 });
+
+test('discovers the paginated Codex catalog and rejects unavailable models and efforts', async (t) => {
+  const { cwd, runtime } = await fixture(t);
+  const models = await runtime.listModels(cwd);
+  assert.deepEqual(models, [
+    {
+      id: 'fixture-a',
+      label: 'Fixture A',
+      efforts: ['low', 'medium'],
+      defaultEffort: 'medium',
+      isDefault: true,
+    },
+    {
+      id: 'fixture-b',
+      label: 'Fixture B',
+      efforts: ['high'],
+      defaultEffort: 'high',
+      isDefault: false,
+    },
+  ]);
+  const request = {
+    cwd,
+    projectId: 'p',
+    conversationId: 'chat',
+    question: 'not submitted',
+    context: [],
+  };
+  const controls = {
+    signal: globalThis.AbortSignal.timeout(5000),
+    approve: async () => false,
+  };
+  await assert.rejects(
+    runtime
+      .stream(request, {
+        ...controls,
+        settings: { harness: 'codex', mode: 'agent', model: 'retired' },
+      })
+      .next(),
+    /saved model is unavailable: retired/,
+  );
+  await assert.rejects(
+    runtime
+      .stream(request, {
+        ...controls,
+        settings: {
+          harness: 'codex',
+          mode: 'ask',
+          model: 'fixture-b',
+          effort: 'low',
+        },
+      })
+      .next(),
+    /saved reasoning effort is unavailable/,
+  );
+});
+
+test('passes model and effort and enforces distinct Ask and Agent approvals', async (t) => {
+  const { cwd, runtime } = await fixture(t);
+  const approvals = [];
+  for (const mode of ['ask', 'agent']) {
+    const identified = [];
+    const request = {
+      cwd,
+      projectId: 'p',
+      conversationId: 'chat',
+      question: 'configured ' + mode,
+      context: [],
+    };
+    const chunks = [];
+    for await (const chunk of runtime.stream(request, {
+      settings: { harness: 'codex', mode, model: 'fixture-b', effort: 'high' },
+      signal: globalThis.AbortSignal.timeout(5000),
+      approve: async (approval) => {
+        approvals.push(approval);
+        return true;
+      },
+      identify: async (_thread, _turn, effective) => identified.push(effective),
+    }))
+      chunks.push(chunk);
+    assert.equal(
+      chunks.join(''),
+      mode === 'ask' ? 'partial read-only' : 'partial agent approved',
+    );
+    assert.deepEqual(identified, [{ model: 'fixture-b', effort: 'high' }]);
+  }
+  assert.equal(approvals.length, 1);
+  assert.match(approvals[0].detail, /write fixture/);
+});
+
+test('stopping at the end of scoped setup prevents a turn from starting', async (t) => {
+  const { cwd, runtime } = await fixture(t);
+  const controller = new globalThis.AbortController();
+  const setup = runtime.scopedClient.bind(runtime);
+  runtime.scopedClient = async (...args) => {
+    const client = await setup(...args);
+    controller.abort();
+    return client;
+  };
+  const stream = runtime.stream(
+    {
+      cwd,
+      projectId: 'project',
+      conversationId: 'chat',
+      question: 'configured ask',
+      context: [],
+    },
+    {
+      settings: {
+        harness: 'codex',
+        mode: 'ask',
+        model: 'fixture-b',
+        effort: 'high',
+      },
+      signal: controller.signal,
+      approve: async () =>
+        assert.fail('An aborted run cannot request approval'),
+      identify: async () => assert.fail('An aborted run cannot start a turn'),
+    },
+  );
+  await assert.rejects(stream.next(), { name: 'AbortError' });
+});

@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath, URL } from 'node:url';
 import { _electron as electron } from 'playwright-core';
 
 test(
@@ -1148,6 +1149,115 @@ test(
       assert.deepEqual(persisted.conversations.slice(0, 2), saved.chats);
     } finally {
       await restored.close();
+    }
+  },
+);
+
+test(
+  'Codex settings drive model, effort and approvals in the desktop composer',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-codex-settings-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'Fixture');
+    await mkdir(projectRoot);
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const app = await electron.launch({
+      executablePath,
+      args: executablePath ? [] : ['.'],
+      chromiumSandbox: true,
+      env: {
+        ...process.env,
+        RESOS_RUNTIME: 'codex',
+        RESOS_CODEX_BIN: fileURLToPath(
+          new URL('./fixtures/codex-app-server.mjs', import.meta.url),
+        ),
+        XDG_CONFIG_HOME: join(root, 'config'),
+      },
+      timeout: 15_000,
+    });
+    try {
+      await app.evaluate(({ dialog }, path) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [path],
+        });
+      }, projectRoot);
+      const window = await app.firstWindow();
+      await window.getByRole('button', { name: 'Add Project' }).click();
+      await window.getByRole('button', { name: 'New chat' }).click();
+      const model = window.getByLabel('Model', { exact: true });
+      const effort = window.getByLabel('Reasoning effort', { exact: true });
+      const mode = window.getByLabel('Mode', { exact: true });
+      await model
+        .locator('option[value=fixture-b]')
+        .waitFor({ state: 'attached' });
+      assert.equal(await mode.inputValue(), 'ask');
+      assert.equal(await model.inputValue(), 'fixture-a');
+      assert.equal(await effort.inputValue(), 'medium');
+      await model.selectOption('fixture-b');
+      assert.equal(await effort.inputValue(), 'high');
+      assert.deepEqual(await effort.locator('option').allTextContents(), [
+        'Harness default',
+        'high',
+      ]);
+      const message = window.getByRole('textbox', { name: 'Message' });
+      await message.fill('configured ask');
+      await window.getByRole('button', { name: 'Preview context' }).click();
+      const preview = window.getByRole('dialog', { name: 'Context preview' });
+      await preview
+        .getByText('codex · ask · fixture-b · high', { exact: true })
+        .waitFor();
+      await preview
+        .getByRole('button', { name: 'Send reviewed input' })
+        .click();
+      const transcript = window.locator('#chat-transcript');
+      await transcript
+        .getByText('partial read-only', { exact: true })
+        .waitFor();
+      assert.equal(
+        await window.getByRole('button', { name: 'Approve once' }).count(),
+        0,
+      );
+      await window.getByRole('button', { name: 'New chat' }).click();
+      await transcript
+        .getByText('Send a message to start this conversation.', {
+          exact: true,
+        })
+        .waitFor();
+      await model.selectOption('fixture-b');
+      await mode.selectOption('agent');
+      await message.fill('configured agent');
+      await window.getByRole('button', { name: 'Send', exact: true }).click();
+      await window.getByRole('button', { name: 'Approve once' }).click();
+      await transcript
+        .getByText('partial agent approved', { exact: true })
+        .waitFor();
+      const [project] = await window.evaluate(() =>
+        window.resos.listProjects(),
+      );
+      const chats = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        project.id,
+      );
+      assert.deepEqual(
+        chats.map((chat) => chat.turns[0].jobs[0].settings),
+        [
+          { harness: 'codex', mode: 'ask', model: 'fixture-b', effort: 'high' },
+          {
+            harness: 'codex',
+            mode: 'agent',
+            model: 'fixture-b',
+            effort: 'high',
+          },
+        ],
+      );
+      assert.deepEqual(chats[1].turns[0].jobs[0].effectiveSettings, {
+        model: 'fixture-b',
+        effort: 'high',
+      });
+    } finally {
+      await app.close();
     }
   },
 );
