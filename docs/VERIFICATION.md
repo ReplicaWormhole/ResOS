@@ -277,3 +277,21 @@ every jump validates the range again before selecting it.
 - Inspected dark-mode screenshots of the collapsed composer and open
   popup at the minimum window size. The Debian package and its SHA-256
   sidecar were generated for 2.0.1 and the checksum passed.
+
+## White chat interface and keyboard sending · 2.0.2
+
+- User messages appear in right-aligned gray bubbles and assistant replies
+  show their content directly. Sender identity remains available to screen
+  readers. The live runtime banner is hidden and message actions use an
+  ellipsis that appears on hover or keyboard focus.
+- Enter sends through the existing submit flow and Shift+Enter inserts a
+  newline. Composition and repeated key events do not send. Sending also
+  closes an open model picker.
+- `npm run check` passed all source checks and 24 tests. All seven
+  packaged desktop tests passed under isolated Xvfb. The tests exercised
+  Enter, Shift+Enter, synthetic composition and repeat events, duplicate
+  submission prevention, white coloring under a dark system preference,
+  bubble alignment, message actions, and sender heading removal.
+- Visually inspected the packaged app with sample prose and TeX at normal
+  and minimum window sizes. Built the 2.0.2 Debian package and verified
+  its SHA-256 sidecar.

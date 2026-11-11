@@ -60,9 +60,13 @@ export class RunSettingsControl {
     });
   }
 
+  close(): void {
+    this.menu.hidePopover();
+  }
+
   show(projectId: string | undefined, available: boolean): void {
     if (projectId === this.projectId && available === this.available) return;
-    this.menu.hidePopover();
+    this.close();
     this.projectId = projectId;
     this.available = available;
     this.catalog = undefined;
@@ -75,7 +79,7 @@ export class RunSettingsControl {
 
   selectChat(chatId: string | undefined): void {
     if (this.chatId === chatId) return;
-    this.menu.hidePopover();
+    this.close();
     this.chatId = chatId;
     this.render();
   }
@@ -131,7 +135,7 @@ export class RunSettingsControl {
   private render(): void {
     const catalog = this.catalog;
     this.host.hidden = !this.available || catalog?.harness === 'demo';
-    if (this.host.hidden) this.menu.hidePopover();
+    if (this.host.hidden) this.close();
     this.summary.textContent = this.loading
       ? 'Loading models…'
       : catalog

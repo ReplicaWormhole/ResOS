@@ -61,6 +61,10 @@ attempt and streams the reply. The prompt and saved context go to the model
 service configured in your Codex installation. Requests to escalate command,
 file, or permission scope appear in the originating project for your decision.
 
+Press **Enter** to send and **Shift+Enter** for a new line. Your messages
+appear in right-aligned bubbles, followed by the assistant's answer.
+The app uses black text on a white background with neutral gray controls.
+
 Use **Stop response** to cancel a queued or running attempt and **Retry
 response** to run the same question again. **Run context** shows the saved
 input, working directory, and execution record. **Search project chats**
@@ -104,7 +108,7 @@ in UTF-8 bytes, keeping your question, explicit attachments, and pinned
 discussion quotes before fitting recent history. The harness may add its
 own instructions, tool definitions, or later tool results.
 
-Open **Message actions** and then **Run context** on a reply to inspect
+Open the reply's **⋯** menu and then **Run context** to inspect
 the saved input and omitted revision IDs. A retry keeps the original
 input and lookup choice when they were recorded.
 
@@ -137,7 +141,7 @@ to the current file on disk, with confirmation if the editor has unsaved
 changes.
 
 Select any part of a rendered formula to capture the full TeX expression.
-Open **Message actions** to edit a message, add a general note, inspect
+Open a message's **⋯** menu to edit it, add a general note, inspect
 revision history, or view a response's run context. Editing preserves
 existing replies and their source links.
 

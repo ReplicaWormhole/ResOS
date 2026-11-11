@@ -107,7 +107,7 @@
               <button id="side-chat-back" type="button">Back to parent</button>
               <button id="side-chat-expand" type="button">Expand</button>
             </div>
-            <p id="chat-runtime" class="chat-demo"></p>
+            <p id="chat-runtime" class="chat-demo" hidden></p>
             <div id="chat-approvals"></div>
             <div
               id="chat-transcript"
@@ -117,8 +117,14 @@
             <p id="chat-error" role="alert" hidden></p>
             <form id="chat-composer">
               <div id="draft-excerpts"></div>
-              <label for="chat-input">Message</label>
-              <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
+              <label class="visually-hidden" for="chat-input">Message</label>
+              <textarea
+                id="chat-input"
+                rows="3"
+                maxlength="12000"
+                placeholder="Message…"
+                aria-description="Enter to send. Shift+Enter for a new line."
+              ></textarea>
               <div class="composer-actions">
                 <button id="preview-context" type="button">
                   Preview context

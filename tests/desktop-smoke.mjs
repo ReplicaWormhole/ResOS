@@ -381,6 +381,43 @@ test(
       await choose('Add Project', beta);
       await project('Alpha').click();
       await newChat.click();
+      await window.emulateMedia({ colorScheme: 'dark' });
+      assert.deepEqual(
+        await window.evaluate(() => {
+          const style = globalThis.getComputedStyle(
+            globalThis.document.documentElement,
+          );
+          return {
+            color: style.color,
+            background: style.backgroundColor,
+            scheme: style.colorScheme,
+          };
+        }),
+        {
+          color: 'rgb(23, 23, 23)',
+          background: 'rgb(255, 255, 255)',
+          scheme: 'light',
+        },
+      );
+      await composer.press('Enter');
+      await composer.fill('First line');
+      await composer.press('Shift+Enter');
+      await composer.press('s');
+      assert.equal(await composer.inputValue(), 'First line\ns');
+      await composer.dispatchEvent('keydown', {
+        key: 'Enter',
+        isComposing: true,
+      });
+      await composer.dispatchEvent('keydown', { key: 'Enter', repeat: true });
+      const [alphaProject] = await window.evaluate(() =>
+        window.resos.listProjects(),
+      );
+      const [emptyChat] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        alphaProject.id,
+      );
+      assert.equal(emptyChat.turns.length, 0);
+      assert.equal(await composer.inputValue(), 'First line\ns');
       await composer.fill('Alpha question');
       await window.getByRole('button', { name: 'Preview context' }).click();
       const preview = window.getByRole('dialog', { name: 'Context preview' });
@@ -400,16 +437,34 @@ test(
       await project('Beta').click();
       await newChat.click();
       await composer.fill('Beta question');
-      await send.click();
+      await composer.press('Enter');
+      await composer.press('Enter');
       await transcript.locator('[data-status=complete]').waitFor();
       assert.match(await transcript.innerText(), /Beta question/);
       assert.doesNotMatch(await transcript.innerText(), /Alpha question/);
+      assert.equal(
+        await transcript.locator('article[data-role=user]').count(),
+        1,
+      );
+      assert.equal(await transcript.locator('article > strong').count(), 0);
+      const bubble = transcript.locator('article[data-role=user] > .chat-rich');
+      assert.equal(
+        await bubble.evaluate(
+          (element) => globalThis.getComputedStyle(element).backgroundColor,
+        ),
+        'rgb(240, 240, 240)',
+      );
+      const userBounds = await bubble.boundingBox();
+      const answerBounds = await transcript
+        .locator('article[data-role=assistant]')
+        .boundingBox();
+      assert.ok(userBounds && answerBounds && userBounds.x > answerBounds.x);
 
       await project('Alpha').click();
       await transcript.locator('[data-status=complete]').waitFor();
       assert.match(await transcript.innerText(), /Alpha question/);
       const finished = transcript.locator('article[data-status=complete]');
-      await finished.getByText('Message actions', { exact: true }).click();
+      await finished.getByLabel('Message actions', { exact: true }).click();
       await finished.getByText('Run context', { exact: true }).click();
       const prepared = finished
         .locator('details')
@@ -420,7 +475,7 @@ test(
         await prepared.locator('pre').textContent(),
         'Alpha question',
       );
-      await finished.getByText('Message actions', { exact: true }).click();
+      await finished.getByLabel('Message actions', { exact: true }).click();
       const originalChatId = await activeChat.getAttribute('data-chat-id');
       await newChat.click();
       await transcript
@@ -765,7 +820,7 @@ test(
         .getByText('same phrase, same phrase.', { exact: true })
         .waitFor({ state: 'hidden' });
 
-      await question.getByText('Message actions', { exact: true }).click();
+      await question.getByLabel('Message actions', { exact: true }).click();
       await question.getByRole('button', { name: 'Edit message' }).click();
       await dialog
         .getByRole('textbox', { name: 'Edit message' })
@@ -778,7 +833,7 @@ test(
           .getByRole('button', { name: 'Revision history' })
           .isVisible())
       )
-        await question.getByText('Message actions', { exact: true }).click();
+        await question.getByLabel('Message actions', { exact: true }).click();
       await question.getByRole('button', { name: 'Revision history' }).click();
       assert.match(await dialog.innerText(), /Revised source/);
       assert.match(await dialog.innerText(), /same phrase, same phrase/);
@@ -1198,6 +1253,7 @@ test(
       await model
         .locator('option[value=fixture-b]')
         .waitFor({ state: 'attached' });
+      await window.locator('#chat-runtime').waitFor({ state: 'hidden' });
       assert.equal(await model.isVisible(), false);
       assert.match(await selector.innerText(), /Fixture A · Medium/);
       await selector.focus();
@@ -1270,7 +1326,8 @@ test(
       await model.selectOption('fixture-b');
       await mode.selectOption('agent');
       await message.fill('configured agent');
-      await window.getByRole('button', { name: 'Send', exact: true }).click();
+      await message.press('Enter');
+      await menu.waitFor({ state: 'hidden' });
       await window.getByRole('button', { name: 'Approve once' }).click();
       await transcript
         .getByText('partial agent approved', { exact: true })

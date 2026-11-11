@@ -17,6 +17,10 @@ desktop installer. Additional coding harnesses are deferred.
   actions. Open files in an editor tab with a clear route back to chat.
   Provide an explicit split view for reading and chatting together. Switching
   layouts preserves drafts, scroll, active tabs, and unsaved buffers.
+- Use black text on a white canvas with neutral gray controls. Show user
+  messages in right-aligned bubbles and assistant replies as plain content.
+  Reveal message actions through a small ellipsis menu on hover or focus.
+  Enter sends a message and Shift+Enter inserts a new line.
 - Show a compact toolbar beside a selection in a file or one saved message.
   Support pointer selection and a keyboard route to the same actions.
   Capture the source before focus moves. Close the toolbar on Escape or when

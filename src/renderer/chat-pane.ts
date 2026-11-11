@@ -129,10 +129,12 @@ export class ChatPane {
     void api
       .chatRuntime()
       .then((mode) => {
-        document.querySelector('#chat-runtime')!.textContent =
+        const banner = document.querySelector<HTMLElement>('#chat-runtime')!;
+        banner.hidden = mode !== 'demo';
+        banner.textContent =
           mode === 'demo'
             ? 'Demo runtime · Responses are generated locally.'
-            : 'Codex · Messages and saved context are sent to your configured model service.';
+            : '';
         this.render(false);
       })
       .catch((error: unknown) => this.showError(error));
@@ -188,6 +190,12 @@ export class ChatPane {
     this.input.addEventListener('input', () => {
       if (this.current) this.drafts.set(this.current.id, this.input.value);
       this.renderComposer();
+    });
+    this.input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      if (!event.repeat && !this.sendButton.disabled)
+        this.input.form?.requestSubmit(this.sendButton);
     });
     document
       .querySelector('#chat-composer')!
@@ -963,9 +971,11 @@ export class ChatPane {
     article.dataset.messageId = message.id;
     article.dataset.revisionId = current.id;
     article.dataset.role = 'question' in message ? 'user' : 'assistant';
-    const heading = document.createElement('strong');
-    heading.textContent = author;
-    article.append(heading, rich.root);
+    article.setAttribute(
+      'aria-label',
+      'question' in message ? 'Your message' : author + ' response',
+    );
+    article.append(rich.root);
     if ('question' in message) {
       for (const excerpt of message.excerpts ?? [])
         article.append(
@@ -1031,7 +1041,9 @@ export class ChatPane {
         else this.openMenus.delete(message.id);
       });
       const label = document.createElement('summary');
-      label.textContent = 'Message actions';
+      label.textContent = '⋯';
+      label.setAttribute('aria-label', 'Message actions');
+      label.title = 'Message actions';
       menu.append(
         label,
         this.action('Edit message', async () =>
@@ -1345,6 +1357,7 @@ export class ChatPane {
     const question = this.input.value;
     const settings = this.runSettings.selected();
     if (!id || !chat || !settings || this.sendButton.disabled) return;
+    this.runSettings.close();
     this.submitting.add(id);
     this.error.hidden = true;
     this.renderComposer();
