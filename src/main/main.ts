@@ -26,7 +26,12 @@ import {
 } from '../workspace/workspace-files.js';
 
 const homeUrl = 'resos://app/index.html';
-const assets = new Set(['/index.html', '/styles.css', '/renderer.js']);
+const assets = new Set([
+  '/index.html',
+  '/styles.css',
+  '/renderer.js',
+  '/theme.js',
+]);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'resos', privileges: { standard: true, secure: true } },

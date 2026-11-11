@@ -295,3 +295,20 @@ every jump validates the range again before selecting it.
 - Visually inspected the packaged app with sample prose and TeX at normal
   and minimum window sizes. Built the 2.0.2 Debian package and verified
   its SHA-256 sidecar.
+
+## Light and dark theme switch · 2.0.3
+
+- Added a global Dark mode switch in a fixed footer at the bottom of the
+  sidebar. Light is the default. The saved choice applies across projects
+  and restarts, including chat, menus, native controls, and the editor.
+- The editor uses CodeMirror theme compartments so switching appearance
+  preserves cached documents, selections, and undo history. Its existing
+  highlighting package is now a direct dependency for the dark palette.
+- `npm run check` passed all source checks and 24 tests. All eight packaged
+  desktop tests passed under isolated Xvfb. The theme check covered keyboard
+  activation, both palettes, project switches, unsaved editor text and undo,
+  persistence across relaunch and reload, and footer visibility at 640 × 420.
+  The model-picker check also exercised its dark appearance.
+- Inspected packaged light and dark split views, the dark model picker,
+  and the minimum-size sidebar. The 2.0.3 Debian package and its SHA-256
+  sidecar were generated and the checksum passed.

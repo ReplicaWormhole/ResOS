@@ -17,7 +17,9 @@ desktop installer. Additional coding harnesses are deferred.
   actions. Open files in an editor tab with a clear route back to chat.
   Provide an explicit split view for reading and chatting together. Switching
   layouts preserves drafts, scroll, active tabs, and unsaved buffers.
-- Use black text on a white canvas with neutral gray controls. Show user
+- Provide a light theme with black text on white and a dark theme with light
+  text on black and gray. Put a persistent global toggle at the bottom of the
+  sidebar and apply the choice to the editor and menus too. Show user
   messages in right-aligned bubbles and assistant replies as plain content.
   Reveal message actions through a small ellipsis menu on hover or focus.
   Enter sends a message and Shift+Enter inserts a new line.

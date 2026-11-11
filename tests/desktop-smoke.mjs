@@ -103,6 +103,149 @@ test(
 );
 
 test(
+  'theme switch stays visible and preserves editor state and the saved preference',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-theme-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const alpha = join(root, 'Alpha');
+    const beta = join(root, 'Beta');
+    await Promise.all([mkdir(alpha), mkdir(beta)]);
+    const source = 'def research():\n    return 1\n';
+    await writeFile(join(alpha, 'script.py'), source);
+    await writeFile(join(beta, 'other.py'), source);
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = () =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: {
+          ...process.env,
+          RESOS_RUNTIME: 'demo',
+          XDG_CONFIG_HOME: join(root, 'config'),
+        },
+        timeout: 15_000,
+      });
+    const app = await launch();
+    try {
+      const window = await app.firstWindow();
+      const toggle = window.getByRole('switch', { name: 'Dark mode' });
+      await window.locator('#theme-toggle:enabled').waitFor();
+      assert.equal(await toggle.isChecked(), false);
+      await toggle.focus();
+      await toggle.press('Space');
+      assert.equal(await toggle.isChecked(), true);
+      assert.equal(
+        await window.evaluate(
+          () =>
+            globalThis.getComputedStyle(globalThis.document.documentElement)
+              .backgroundColor,
+        ),
+        'rgb(27, 27, 27)',
+      );
+
+      const add = async (folder) => {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [path],
+          });
+        }, folder);
+        await window.getByRole('button', { name: 'Add Project' }).click();
+      };
+      await add(alpha);
+      await window
+        .getByRole('button', { name: 'script.py', exact: true })
+        .click();
+      const contents = window.getByRole('textbox', { name: 'File contents' });
+      await contents.waitFor();
+      const editor = window.locator('.cm-editor:not([hidden])');
+      assert.equal(
+        await editor.evaluate(
+          (element) => globalThis.getComputedStyle(element).backgroundColor,
+        ),
+        'rgb(30, 30, 30)',
+      );
+      const keyword = contents.locator('span').filter({ hasText: /^def$/ });
+      assert.equal(
+        await keyword.evaluate(
+          (element) => globalThis.getComputedStyle(element).color,
+        ),
+        'rgb(196, 167, 231)',
+      );
+      await contents.press('Control+End');
+      await contents.pressSequentially('# unsaved draft', { delay: 5 });
+      const draft = await contents.innerText();
+      await add(beta);
+      await window
+        .getByRole('button', { name: 'other.py', exact: true })
+        .click();
+      await contents.waitFor();
+      await toggle.uncheck();
+      assert.equal(
+        await editor.evaluate(
+          (element) => globalThis.getComputedStyle(element).backgroundColor,
+        ),
+        'rgb(255, 255, 255)',
+      );
+      await toggle.check();
+      await window
+        .getByRole('list', { name: 'Saved projects' })
+        .getByRole('button', { name: 'Alpha', exact: true })
+        .click();
+      await contents.waitFor();
+      assert.equal(await contents.innerText(), draft);
+      assert.equal(
+        await editor.evaluate(
+          (element) => globalThis.getComputedStyle(element).backgroundColor,
+        ),
+        'rgb(30, 30, 30)',
+      );
+      await contents.press('Control+z');
+      assert.doesNotMatch(await contents.innerText(), /unsaved draft/);
+      assert.equal(await readFile(join(alpha, 'script.py'), 'utf8'), source);
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setSize(640, 420),
+      );
+      await window.waitForFunction(() => window.innerWidth <= 640);
+      await window.locator('#sidebar-content').evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      const bounds = await toggle.boundingBox();
+      assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 420);
+    } finally {
+      await app.close();
+    }
+    const reopened = await launch();
+    try {
+      const window = await reopened.firstWindow();
+      const toggle = window.getByRole('switch', { name: 'Dark mode' });
+      await window.locator('#theme-toggle:enabled').waitFor();
+      assert.equal(await toggle.isChecked(), true);
+      assert.equal(
+        await window.evaluate(
+          () => globalThis.document.documentElement.dataset.theme,
+        ),
+        'dark',
+      );
+      await toggle.uncheck();
+      await window.reload();
+      await window.getByRole('button', { name: 'Add Project' }).waitFor();
+      assert.equal(await toggle.isChecked(), false);
+      assert.equal(
+        await window.evaluate(
+          () => globalThis.document.documentElement.dataset.theme,
+        ),
+        'light',
+      );
+    } finally {
+      await reopened.close();
+    }
+  },
+);
+
+test(
   'workspace editor keeps drafts isolated and detects external changes',
   { timeout: 45_000 },
   async (t) => {
@@ -1256,9 +1399,16 @@ test(
       await window.locator('#chat-runtime').waitFor({ state: 'hidden' });
       assert.equal(await model.isVisible(), false);
       assert.match(await selector.innerText(), /Fixture A · Medium/);
+      await window.getByRole('switch', { name: 'Dark mode' }).check();
       await selector.focus();
       await selector.press('Enter');
       await menu.waitFor();
+      assert.equal(
+        await menu.evaluate(
+          (element) => globalThis.getComputedStyle(element).backgroundColor,
+        ),
+        'rgb(36, 36, 36)',
+      );
       assert.equal(await selector.getAttribute('aria-expanded'), 'true');
       await window.keyboard.press('Escape');
       await menu.waitFor({ state: 'hidden' });

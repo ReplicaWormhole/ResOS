@@ -9,7 +9,7 @@ import { python } from '@codemirror/lang-python';
 import { StreamLanguage } from '@codemirror/language';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { openSearchPanel } from '@codemirror/search';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import type { Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
@@ -19,6 +19,7 @@ import type {
   WorkspaceFile,
 } from '../shared/desktop-api.js';
 import { fileFormat, packFile, unpackFile } from './file-format.js';
+import { editorTheme } from './editor-theme.js';
 
 const styleNonce = EditorView.cspNonce.of(
   document.querySelector<HTMLMetaElement>('meta[name=editor-style-nonce]')!
@@ -55,6 +56,7 @@ function dirty(tab: Tab): boolean {
 }
 
 export class WorkspaceEditor {
+  private readonly appearance = new Compartment();
   private readonly tabList = document.querySelector<HTMLElement>('#file-tabs')!;
   private readonly empty =
     document.querySelector<HTMLElement>('#editor-empty')!;
@@ -107,6 +109,16 @@ export class WorkspaceEditor {
 
   onBufferChange(changed: () => void): void {
     this.changed = changed;
+  }
+
+  setTheme(darkMode: boolean): void {
+    const effects = this.appearance.reconfigure(editorTheme(darkMode));
+    for (const group of this.groups.values()) {
+      for (const tab of group.tabs.values()) {
+        if (tab.view) tab.view.dispatch({ effects });
+        else tab.state = tab.state.update({ effects }).state;
+      }
+    }
   }
 
   fileSource():
@@ -314,6 +326,9 @@ export class WorkspaceEditor {
       selection: { anchor },
       extensions: [
         basicSetup,
+        this.appearance.of(
+          editorTheme(document.documentElement.dataset.theme === 'dark'),
+        ),
         language(tab.path),
         fileFormat.init(() => format),
         styleNonce,

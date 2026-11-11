@@ -9,57 +9,66 @@
     />
     <meta name="editor-style-nonce" content="__RESOS_STYLE_NONCE__" />
     <title>ResOS</title>
+    <script type="module" src="theme.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="renderer.js"></script>
   </head>
   <body>
     <aside aria-labelledby="projects-heading">
-      <div class="app-name">ResOS</div>
-      <h2 id="projects-heading">Projects</h2>
-      <button id="add-project" type="button" disabled>Add Project</button>
-      <ul id="projects" aria-label="Saved projects"></ul>
-      <section class="sidebar-section" id="files" hidden>
-        <h2>
-          <button
-            class="disclosure"
-            type="button"
-            aria-controls="files-content"
-            aria-expanded="true"
-          >
-            Files
-          </button>
-        </h2>
-        <div id="files-content">
-          <button id="refresh-files" type="button">Refresh tree</button>
-          <div id="file-tree"></div>
-        </div>
-      </section>
-      <section class="sidebar-section" id="chats" hidden>
-        <h2>
-          <button
-            class="disclosure"
-            type="button"
-            aria-controls="chats-content"
-            aria-expanded="true"
-          >
-            Chats
-          </button>
-        </h2>
-        <div id="chats-content">
-          <button id="new-chat" type="button">New chat</button>
-          <ul id="chat-list" aria-label="Conversations"></ul>
-          <details class="chat-context">
-            <summary>Search project chats</summary>
-            <label for="chat-search">Search saved context</label>
-            <input id="chat-search" type="search" />
-            <ul id="chat-search-results"></ul>
-          </details>
-          <details class="chat-context">
-            <summary>File notes</summary>
-            <div id="file-notes"></div>
-          </details>
-        </div>
-      </section>
+      <div id="sidebar-content">
+        <div class="app-name">ResOS</div>
+        <h2 id="projects-heading">Projects</h2>
+        <button id="add-project" type="button" disabled>Add Project</button>
+        <ul id="projects" aria-label="Saved projects"></ul>
+        <section class="sidebar-section" id="files" hidden>
+          <h2>
+            <button
+              class="disclosure"
+              type="button"
+              aria-controls="files-content"
+              aria-expanded="true"
+            >
+              Files
+            </button>
+          </h2>
+          <div id="files-content">
+            <button id="refresh-files" type="button">Refresh tree</button>
+            <div id="file-tree"></div>
+          </div>
+        </section>
+        <section class="sidebar-section" id="chats" hidden>
+          <h2>
+            <button
+              class="disclosure"
+              type="button"
+              aria-controls="chats-content"
+              aria-expanded="true"
+            >
+              Chats
+            </button>
+          </h2>
+          <div id="chats-content">
+            <button id="new-chat" type="button">New chat</button>
+            <ul id="chat-list" aria-label="Conversations"></ul>
+            <details class="chat-context">
+              <summary>Search project chats</summary>
+              <label for="chat-search">Search saved context</label>
+              <input id="chat-search" type="search" />
+              <ul id="chat-search-results"></ul>
+            </details>
+            <details class="chat-context">
+              <summary>File notes</summary>
+              <div id="file-notes"></div>
+            </details>
+          </div>
+        </section>
+      </div>
+      <footer id="appearance-controls">
+        <label class="theme-setting" for="theme-toggle">
+          <span>Dark mode</span>
+          <input id="theme-toggle" type="checkbox" role="switch" disabled />
+        </label>
+      </footer>
     </aside>
     <main>
       <header>

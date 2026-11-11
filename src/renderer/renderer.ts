@@ -30,6 +30,19 @@ const projectViews = new Map<string, View>();
 const sidebarState = new Map<string, boolean>();
 const viewButtons = views.querySelectorAll('button');
 const editor = new WorkspaceEditor(window.resos);
+const themeToggle = document.querySelector<HTMLInputElement>('#theme-toggle')!;
+themeToggle.checked = document.documentElement.dataset.theme === 'dark';
+themeToggle.addEventListener('change', () => {
+  const theme = themeToggle.checked ? 'dark' : 'light';
+  document.documentElement.dataset.theme = theme;
+  editor.setTheme(themeToggle.checked);
+  try {
+    localStorage.setItem('resos:theme', theme);
+  } catch {
+    // The preference still applies for this session.
+  }
+});
+themeToggle.disabled = false;
 const chat = new ChatPane(
   window.resos,
   {

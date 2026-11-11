@@ -21,3 +21,16 @@ await build({
   platform: 'browser',
   target: 'es2023',
 });
+
+await build({
+  entryPoints: [
+    fileURLToPath(
+      new URL('../src/renderer/theme-bootstrap.ts', import.meta.url),
+    ),
+  ],
+  outfile: fileURLToPath(new URL('../dist/renderer/theme.js', import.meta.url)),
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: 'es2023',
+});

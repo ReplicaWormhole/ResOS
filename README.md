@@ -63,7 +63,9 @@ file, or permission scope appear in the originating project for your decision.
 
 Press **Enter** to send and **Shift+Enter** for a new line. Your messages
 appear in right-aligned bubbles, followed by the assistant's answer.
-The app uses black text on a white background with neutral gray controls.
+Use **Dark mode** at the bottom of the left sidebar to switch between a
+light theme and a dark gray theme. It applies to chats, menus, and the
+editor, and your choice is remembered across projects and app restarts.
 
 Use **Stop response** to cancel a queued or running attempt and **Retry
 response** to run the same question again. **Run context** shows the saved
