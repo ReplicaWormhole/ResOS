@@ -89,7 +89,7 @@ test('Codex transport interrupts the active turn and retains the already yielded
   await assert.rejects(stream.next(), { name: 'AbortError' });
 });
 
-test('Codex sends the exact prepared input and rejects notebook calls outside the active turn', async (t) => {
+test('Codex sends the exact prepared input and scopes notebook calls in a coalesced reply', async (t) => {
   const { cwd, runtime } = await fixture(t);
   const seen = [];
   const request = {

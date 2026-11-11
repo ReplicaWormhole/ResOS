@@ -150,7 +150,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         },
       });
       break;
-    case 'turn/start':
+    case 'turn/start': {
       assert.equal(stage++, 3);
       if (ask)
         assert.deepEqual(params.sandboxPolicy, {
@@ -164,8 +164,8 @@ for await (const line of createInterface({ input: process.stdin })) {
       assert.equal(params.model, requestedModel);
       assert.equal(params.effort, requestedEffort);
       action = params.input[0].text;
-      send({ id, result: { turn: { id: turnId } } });
-      send({
+      const messages = [{ id, result: { turn: { id: turnId } } }];
+      messages.push({
         method: 'item/agentMessage/delta',
         params: {
           threadId: 'wrong',
@@ -174,7 +174,7 @@ for await (const line of createInterface({ input: process.stdin })) {
           delta: 'foreign',
         },
       });
-      send({
+      messages.push({
         method: 'item/agentMessage/delta',
         params: { threadId, turnId, itemId: 'message', delta: 'partial ' },
       });
@@ -185,7 +185,7 @@ for await (const line of createInterface({ input: process.stdin })) {
           ['other-turn-lookup', { threadId, turnId: 'other' }],
           ['lookup', { threadId, turnId }],
         ])
-          send({
+          messages.push({
             id,
             method: 'item/tool/call',
             params: {
@@ -196,6 +196,10 @@ for await (const line of createInterface({ input: process.stdin })) {
             },
           });
       }
+      // Pipe reads may combine a reply and its immediate tool requests.
+      process.stdout.write(
+        messages.map((message) => JSON.stringify(message)).join('\n') + '\n',
+      );
       if (action === 'configured ask' || action === 'configured agent') {
         assert.equal(ask, action === 'configured ask');
         assert.equal(scoped, true);
@@ -240,6 +244,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         });
       }
       break;
+    }
     case 'turn/interrupt':
       assert.deepEqual(params, { threadId, turnId });
       send({ id, result: {} });

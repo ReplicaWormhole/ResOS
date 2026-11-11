@@ -312,3 +312,16 @@ every jump validates the range again before selecting it.
 - Inspected packaged light and dark split views, the dark model picker,
   and the minimum-size sidebar. The 2.0.3 Debian package and its SHA-256
   sidecar were generated and the checksum passed.
+
+## CI transport ordering fix · 2.0.4
+
+- GitHub CI exposed a race when a turn-start reply and immediate notebook
+  tool requests arrived in the same pipe read. The callback could run
+  before the awaiting caller saved the active turn ID.
+- The transport now consumes JSON lines through an async iterator, allowing
+  reply continuations to update state before the next frame. The fixture
+  writes the reply, notifications, and lookup requests in one batch to
+  reproduce the case deterministically.
+- The batched fixture failed with the previous transport and passed with
+  the fix. `npm run check` passed all source checks and 24 tests, including
+  rejection of lookup requests for a different thread or turn.

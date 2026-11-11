@@ -63,9 +63,17 @@ export class StdioRpc extends EventEmitter {
     );
     this.child.stdin.on('error', (error) => this.fail(error));
     this.child.stderr.resume();
-    createInterface({ input: this.child.stdout, crlfDelay: Infinity }).on(
-      'line',
-      (line) => {
+    void this.readMessages();
+  }
+
+  private async readMessages(): Promise<void> {
+    try {
+      // Let a reply's awaiting caller update its state before the next frame,
+      // even when the pipe delivers several JSON lines in one read.
+      for await (const line of createInterface({
+        input: this.child.stdout,
+        crlfDelay: Infinity,
+      })) {
         let message: JsonObject;
         try {
           message = object(JSON.parse(line));
@@ -88,8 +96,14 @@ export class StdioRpc extends EventEmitter {
             settle(new Error(String(error.message ?? 'Codex request failed.')));
           else settle(undefined, object(message.result));
         }
-      },
-    );
+      }
+    } catch (error) {
+      this.fail(
+        error instanceof Error
+          ? error
+          : new Error('Could not read Codex output.'),
+      );
+    }
   }
 
   private fail(error: Error): void {
