@@ -78,16 +78,17 @@ is saved beside the registry in the app data directory as `notebook.json`.
 
 ## Choose Codex settings
 
-Use **Mode**, **Model**, and **Reasoning effort** in the composer. ResOS lists
-the text models and effort levels reported by your signed-in Codex CLI.
+The composer shows the selected model and reasoning effort in one compact
+button. Click it to choose **Model**, **Reasoning effort**, and **Mode**.
+Press Escape or click outside to close the picker. ResOS lists the text
+models and effort levels reported by your signed-in Codex CLI.
 **Refresh models** updates the list. Effort controls how the model reasons.
 The context preview separately shows the amount of notebook input.
 
 **Ask** starts with read-only tools and disables escalation. **Agent**
 allows writes in the project and asks before escalating permissions. Scoped
 runs disable Codex hooks, external MCP servers, plugins, apps, and web
-search for the run. The selected mode and permission summary appear next
-to the composer.
+search for the run. The picker shows the selected mode and permission summary.
 
 ResOS saves the requested settings at queue time and records the model and
 effort Codex confirms. **Retry response** keeps those choices. If a saved

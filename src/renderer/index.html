@@ -119,30 +119,6 @@
               <div id="draft-excerpts"></div>
               <label for="chat-input">Message</label>
               <textarea id="chat-input" rows="3" maxlength="12000"></textarea>
-              <div id="run-settings" hidden>
-                <div class="run-settings-options">
-                  <div>
-                    <label for="run-harness">Harness</label>
-                    <select id="run-harness"></select>
-                  </div>
-                  <div>
-                    <label for="run-mode">Mode</label>
-                    <select id="run-mode"></select>
-                  </div>
-                  <div>
-                    <label for="run-model">Model</label>
-                    <select id="run-model"></select>
-                  </div>
-                  <div>
-                    <label for="run-effort">Reasoning effort</label>
-                    <select id="run-effort"></select>
-                  </div>
-                  <button id="refresh-models" type="button">
-                    Refresh models
-                  </button>
-                </div>
-                <div id="run-settings-status" role="status"></div>
-              </div>
               <div class="composer-actions">
                 <button id="preview-context" type="button">
                   Preview context
@@ -155,6 +131,45 @@
                   <input id="notebook-lookup" type="checkbox" />
                   Allow notebook lookup
                 </label>
+                <div id="run-settings" hidden>
+                  <button
+                    id="run-settings-toggle"
+                    type="button"
+                    popovertarget="run-settings-menu"
+                    aria-label="Model and thinking settings"
+                    aria-describedby="run-settings-summary"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                  >
+                    <span id="run-settings-summary">Choose model</span>
+                    <span aria-hidden="true">⌄</span>
+                  </button>
+                  <div
+                    id="run-settings-menu"
+                    popover="auto"
+                    role="dialog"
+                    aria-label="Model and thinking settings"
+                  >
+                    <div class="run-settings-options">
+                      <div>
+                        <label for="run-model">Model</label>
+                        <select id="run-model" autofocus></select>
+                      </div>
+                      <div>
+                        <label for="run-effort">Reasoning effort</label>
+                        <select id="run-effort"></select>
+                      </div>
+                      <div>
+                        <label for="run-mode">Mode</label>
+                        <select id="run-mode"></select>
+                      </div>
+                      <button id="refresh-models" type="button">
+                        Refresh models
+                      </button>
+                    </div>
+                    <div id="run-settings-status" role="status"></div>
+                  </div>
+                </div>
                 <button id="chat-send" type="submit">Send</button>
               </div>
             </form>

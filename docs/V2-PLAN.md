@@ -96,8 +96,9 @@ settings, starts and cancels work, streams output, and translates tool
 approval requests. Codex is the live backend for v2 and owns its
 authentication.
 
-- Put **Harness**, **Model**, and **Reasoning effort** in the composer. Use
-  the installed backend's available models and supported settings. Offer
+- Show the selected model and reasoning effort in a compact composer
+  button. Clicking it opens **Model**, **Reasoning effort**, and **Mode**.
+  Use the installed backend's available models and supported settings. Offer
   a numeric thinking budget only when that model and harness expose one.
   Distinguish reasoning effort from the amount of chat history sent.
   Codex App Server exposes model and effort discovery through `model/list`

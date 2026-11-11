@@ -264,3 +264,16 @@ every jump validates the range again before selecting it.
   and Agent wrote a file in the same disposable project. Both attempts
   recorded the selected model, confirmed settings, and run IDs. No release
   has been published.
+
+## Compact model picker · 2.0.1
+
+- The composer shows the selected model and reasoning effort in one
+  button. Its popup contains the model, effort, mode, and refresh controls.
+- `npm run check` passed formatting, lint, typecheck, build, and 24 tests.
+  All seven desktop tests passed against the packaged executable under
+  isolated Xvfb. The settings test covers the collapsed summary, keyboard
+  opening, Escape with focus restoration, outside-click dismissal, updated
+  choices, and popup bounds at 640 × 420.
+- Inspected dark-mode screenshots of the collapsed composer and open
+  popup at the minimum window size. The Debian package and its SHA-256
+  sidecar were generated for 2.0.1 and the checksum passed.

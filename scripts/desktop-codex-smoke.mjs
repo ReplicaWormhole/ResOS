@@ -39,16 +39,22 @@ try {
   const window = await app.firstWindow();
   await window.getByRole('button', { name: 'Add Project' }).click();
   await window.getByRole('button', { name: 'New chat' }).click();
+  const selector = window.getByRole('button', {
+    name: 'Model and thinking settings',
+  });
+  await selector.click();
   await window.locator('#run-model:enabled').waitFor();
   const model = await window.getByLabel('Model', { exact: true }).inputValue();
   const effort = await window
     .getByLabel('Reasoning effort', { exact: true })
     .inputValue();
   const mode = window.getByLabel('Mode', { exact: true });
+  await window.keyboard.press('Escape');
   const results = window.locator(
     '#chat-transcript [data-status=complete], #chat-transcript [data-status=failed]',
   );
   const run = async (selection, question, index) => {
+    await selector.click();
     await mode.selectOption(selection);
     await window.getByRole('textbox', { name: 'Message' }).fill(question);
     await window.getByRole('button', { name: 'Send', exact: true }).click();

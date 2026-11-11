@@ -1189,20 +1189,60 @@ test(
       const model = window.getByLabel('Model', { exact: true });
       const effort = window.getByLabel('Reasoning effort', { exact: true });
       const mode = window.getByLabel('Mode', { exact: true });
+      const selector = window.getByRole('button', {
+        name: 'Model and thinking settings',
+      });
+      const menu = window.getByRole('dialog', {
+        name: 'Model and thinking settings',
+      });
       await model
         .locator('option[value=fixture-b]')
         .waitFor({ state: 'attached' });
+      assert.equal(await model.isVisible(), false);
+      assert.match(await selector.innerText(), /Fixture A · Medium/);
+      await selector.focus();
+      await selector.press('Enter');
+      await menu.waitFor();
+      assert.equal(await selector.getAttribute('aria-expanded'), 'true');
+      await window.keyboard.press('Escape');
+      await menu.waitFor({ state: 'hidden' });
+      assert.equal(
+        await selector.evaluate(
+          (element) => element === globalThis.document.activeElement,
+        ),
+        true,
+      );
+      await selector.click();
       assert.equal(await mode.inputValue(), 'ask');
       assert.equal(await model.inputValue(), 'fixture-a');
       assert.equal(await effort.inputValue(), 'medium');
       await model.selectOption('fixture-b');
       assert.equal(await effort.inputValue(), 'high');
       assert.deepEqual(await effort.locator('option').allTextContents(), [
-        'Harness default',
+        'Default',
         'high',
       ]);
+      assert.match(await selector.innerText(), /Fixture B · High/);
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setSize(640, 420),
+      );
+      await window.waitForFunction(() => window.innerWidth <= 640);
+      const bounds = await menu.boundingBox();
+      const viewport = await window.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+      assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0);
+      assert.ok(bounds.x + bounds.width <= viewport.width);
+      assert.ok(bounds.y + bounds.height <= viewport.height);
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setSize(1050, 700),
+      );
       const message = window.getByRole('textbox', { name: 'Message' });
       await message.fill('configured ask');
+      await message.click({ position: { x: 5, y: 5 } });
+      await menu.waitFor({ state: 'hidden' });
+      assert.equal(await model.isVisible(), false);
       await window.getByRole('button', { name: 'Preview context' }).click();
       const preview = window.getByRole('dialog', { name: 'Context preview' });
       await preview
@@ -1225,6 +1265,8 @@ test(
           exact: true,
         })
         .waitFor();
+      assert.match(await selector.innerText(), /Fixture A · Medium/);
+      await selector.click();
       await model.selectOption('fixture-b');
       await mode.selectOption('agent');
       await message.fill('configured agent');

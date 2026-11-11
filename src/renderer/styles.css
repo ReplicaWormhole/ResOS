@@ -580,20 +580,63 @@ p {
 }
 
 .composer-actions #chat-send {
+  margin-inline-start: 0;
+}
+
+#run-settings {
+  min-width: 0;
+  max-width: 100%;
   margin-inline-start: auto;
 }
 
-.run-settings-options {
+#run-settings[hidden] + #chat-send {
+  margin-inline-start: auto;
+}
+
+#run-settings-toggle {
+  anchor-name: --run-settings;
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 6px;
-  overflow-x: auto;
+  max-width: 100%;
+  border: 0;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+#run-settings-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#run-settings-menu {
+  position-anchor: --run-settings;
+  inset: auto;
+  bottom: anchor(top);
+  right: anchor(right);
+  position-try-fallbacks: flip-block, flip-inline;
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  margin: 0 0 8px;
+  padding: 14px;
+  color: inherit;
+  background: var(--rail);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px #0003;
+}
+
+.run-settings-options {
+  display: grid;
+  gap: 12px;
 }
 
 .run-settings-options > div {
   display: grid;
-  flex: 0 0 auto;
-  gap: 2px;
+  gap: 4px;
 }
 
 .run-settings-options select {
@@ -601,15 +644,18 @@ p {
   background: var(--rail);
   border: 1px solid var(--border);
   border-radius: 4px;
-  max-width: 13em;
+  min-width: 0;
+  width: 100%;
+  padding: 5px 6px;
   font: inherit;
 }
 
 .run-settings-options button {
-  flex: 0 0 auto;
+  justify-self: start;
 }
 
 #run-settings-status {
+  margin-top: 10px;
   font-size: 0.8rem;
   overflow-wrap: anywhere;
 }

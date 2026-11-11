@@ -14,8 +14,14 @@ export class RunSettingsControl {
     document.querySelector<HTMLSelectElement>('#run-effort')!;
   private readonly mode =
     document.querySelector<HTMLSelectElement>('#run-mode')!;
-  private readonly harness =
-    document.querySelector<HTMLSelectElement>('#run-harness')!;
+  private readonly toggle = document.querySelector<HTMLButtonElement>(
+    '#run-settings-toggle',
+  )!;
+  private readonly summary = document.querySelector<HTMLElement>(
+    '#run-settings-summary',
+  )!;
+  private readonly menu =
+    document.querySelector<HTMLElement>('#run-settings-menu')!;
   private readonly refresh =
     document.querySelector<HTMLButtonElement>('#refresh-models')!;
   private readonly status = document.querySelector<HTMLElement>(
@@ -33,6 +39,12 @@ export class RunSettingsControl {
     private readonly api: ChatApi,
     private readonly changed: () => void,
   ) {
+    this.menu.addEventListener('beforetoggle', (event) => {
+      this.toggle.setAttribute(
+        'aria-expanded',
+        String((event as ToggleEvent).newState === 'open'),
+      );
+    });
     this.refresh.addEventListener('click', () => void this.load());
     this.mode.addEventListener('change', () =>
       this.save({ mode: this.mode.value as RunMode }),
@@ -50,6 +62,7 @@ export class RunSettingsControl {
 
   show(projectId: string | undefined, available: boolean): void {
     if (projectId === this.projectId && available === this.available) return;
+    this.menu.hidePopover();
     this.projectId = projectId;
     this.available = available;
     this.catalog = undefined;
@@ -62,6 +75,7 @@ export class RunSettingsControl {
 
   selectChat(chatId: string | undefined): void {
     if (this.chatId === chatId) return;
+    this.menu.hidePopover();
     this.chatId = chatId;
     this.render();
   }
@@ -93,7 +107,7 @@ export class RunSettingsControl {
     const request = ++this.request;
     this.catalog = undefined;
     this.loading = true;
-    this.status.textContent = 'Loading harness settings…';
+    this.status.textContent = 'Loading models…';
     this.render();
     this.changed();
     try {
@@ -117,8 +131,14 @@ export class RunSettingsControl {
   private render(): void {
     const catalog = this.catalog;
     this.host.hidden = !this.available || catalog?.harness === 'demo';
+    if (this.host.hidden) this.menu.hidePopover();
+    this.summary.textContent = this.loading
+      ? 'Loading models…'
+      : catalog
+        ? 'Choose model'
+        : 'Model settings unavailable';
+    this.toggle.title = this.status.textContent;
     this.refresh.disabled = this.loading;
-    this.harness.disabled = true;
     this.model.disabled = !catalog || !this.chatId;
     this.mode.disabled = !catalog || !this.chatId;
     this.effort.disabled = true;
@@ -134,12 +154,6 @@ export class RunSettingsControl {
       };
       this.drafts.set(this.chatId, settings);
     }
-    this.harness.replaceChildren(
-      new Option(
-        catalog.harness === 'codex' ? 'Codex' : 'Demo',
-        catalog.harness,
-      ),
-    );
     this.mode.replaceChildren(
       ...catalog.modes.map(
         (mode) => new Option(mode === 'ask' ? 'Ask' : 'Agent', mode),
@@ -166,7 +180,7 @@ export class RunSettingsControl {
     }
     this.model.value = settings.model ?? '';
     this.effort.replaceChildren(
-      new Option('Harness default', ''),
+      new Option('Default', ''),
       ...(selectedModel?.efforts ?? []).map(
         (effort) => new Option(effort, effort),
       ),
@@ -181,8 +195,18 @@ export class RunSettingsControl {
     }
     this.effort.value = settings.effort ?? '';
     this.effort.disabled = !selectedModel?.efforts.length;
-    this.status.textContent = this.selected()
+    const valid = this.selected() !== undefined;
+    this.status.textContent = valid
       ? policy
       : 'Select an available model and effort.';
+    const thinking = settings.effort
+      ? settings.effort[0]!.toUpperCase() + settings.effort.slice(1)
+      : 'Default';
+    this.summary.textContent =
+      (selectedModel?.label ?? settings.model ?? 'Choose model') +
+      ' · ' +
+      thinking +
+      (valid ? '' : ' (unavailable)');
+    this.toggle.title = this.status.textContent;
   }
 }

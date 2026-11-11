@@ -9,16 +9,14 @@ desktop user.
 Verify and install from the directory containing the package and its checksum.
 
 ```sh
-sha256sum -c resos_2.0.0_amd64.deb.sha256
-sudo apt install ./resos_2.0.0_amd64.deb
+sha256sum -c resos_2.0.1_amd64.deb.sha256
+sudo apt install ./resos_2.0.1_amd64.deb
 ```
 
 Quit an older ResOS session before upgrading. The same install command
 upgrades earlier desktop milestones and uses their existing profile. Launch
 **ResOS** from the application menu. Add a project folder or reopen one
 from the sidebar.
-If you already installed an experimental 2.0.0 package, use
-`sudo apt install --reinstall ./resos_2.0.0_amd64.deb`.
 
 Run `codex --version` and `codex login status` in a terminal to check your
 installation. Run `codex login` if needed. ResOS also looks in local nvm
@@ -92,8 +90,8 @@ Use a clean checkout, Node from `.nvmrc`, and the Ubuntu packages
 ```sh
 npm ci
 npm run release:linux
-(cd release && sha256sum -c resos_2.0.0_amd64.deb.sha256)
-sudo apt install ./release/resos_2.0.0_amd64.deb
+(cd release && sha256sum -c resos_2.0.1_amd64.deb.sha256)
+sudo apt install ./release/resos_2.0.1_amd64.deb
 RESOS_EXECUTABLE=/opt/ResOS/resos xvfb-run -a npm run test:desktop
 ```
 
