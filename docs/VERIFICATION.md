@@ -325,3 +325,14 @@ every jump validates the range again before selecting it.
 - The batched fixture failed with the previous transport and passed with
   the fix. `npm run check` passed all source checks and 24 tests, including
   rejection of lookup requests for a different thread or turn.
+
+## Desktop and prototype history merge
+
+- Joined the previously unrelated desktop and browser histories using an
+  ours-strategy merge from the desktop branch. The resulting source layout
+  uses the desktop project. Browser source is accessible at its original
+  commit, linked from the prototype reference.
+- Before documentation updates, the merge tree matched the existing
+  desktop tree exactly. The history scan covered both branches and found
+  no credentials. The merge allows `main` and `master` to advance together
+  to the desktop project without a force push.

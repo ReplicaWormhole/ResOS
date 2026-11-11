@@ -1,15 +1,21 @@
 # Browser prototype reference
 
-The browser prototype is preserved in the original
-[ResOS repository](https://github.com/ReplicaWormhole/ResOS), under
-`research-ide/`. The tracked browser code baseline is `dbaeb27`. The original
+The browser prototype is preserved in this repository's history at
+[`dbaeb27`](https://github.com/ReplicaWormhole/ResOS/tree/dbaeb27f4a37c2702c9b013424a16944ea48fc78/research-ide).
+The current repository layout contains the desktop project. The original
 local checkout at `../hackathon` also has the annotated tag
 `legacy-browser-prototype` at `9f220ca`, which includes the planning baseline.
 
 Use the prototype's `research-ide/MVP.md` and
 `research-ide/ARCHITECTURE.md` for its behavior and data contracts. Its test
 suite is a reference for revisions, source selection, context, and job
-recovery. From the original checkout, run:
+recovery. From the desktop checkout, read the saved source with:
+
+```sh
+git show dbaeb27:research-ide/ARCHITECTURE.md
+```
+
+From the original checkout, run:
 
 ```sh
 git show legacy-browser-prototype:research-ide/ARCHITECTURE.md
