@@ -1,8 +1,19 @@
 # ResOS
 
-ResOS is a desktop research IDE and Codex notebook in development. Open an
-existing folder as a project, edit its files in tabs, and keep a separate chat
-history for each project.
+**AI conversations that branch without losing the main thread.**
+
+ResOS is a desktop research workspace powered by Codex, currently in development.
+Select a passage in an answer to open a linked discussion. Ask follow-up questions
+inside that discussion, go deeper into another, and return to the main conversation
+when you're ready. Side questions have their own space, so the main thread stays
+focused and you can revisit the details later.
+
+[![ResOS demo: asking about a selected passage and opening a nested discussion](docs/media/resos-demo-preview.gif)](docs/media/resos-demo.mp4?raw=true)
+
+Accelerated, silent preview. [Watch the full demo with audio (MP4)](docs/media/resos-demo.mp4?raw=true).
+
+Open an existing folder as a project, edit its files in tabs, and keep a separate
+chat history for each project.
 
 ## Run from source
 
