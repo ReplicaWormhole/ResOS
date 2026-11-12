@@ -9,9 +9,10 @@ desktop installer. Additional coding harnesses are deferred.
 
 - Give the project sidebar independent **Files** and **Chats** disclosures.
   Keep the existing directory tree inside Files. Put **New chat** and project
-  chat search alongside Chats. Remember each project's sidebar state and keep
-  the root chat selected while reading a nested discussion. Keep saved chats
-  available when the project folder is missing.
+  chat search alongside Chats. Keep **New chat** outside the collapsible content
+  and offer **Create chat** in an empty workspace. Remember each project's
+  sidebar state and keep the root chat selected while reading a nested
+  discussion. Keep saved chats available when the project folder is missing.
 - Make chat the default center view. Use a readable transcript column,
   scrollable history, a composer anchored at the bottom, and compact message
   actions. Open files in an editor tab with a clear route back to chat.

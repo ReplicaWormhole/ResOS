@@ -336,3 +336,28 @@ every jump validates the range again before selecting it.
   desktop tree exactly. The history scan covered both branches and found
   no credentials. The merge allows `main` and `master` to advance together
   to the desktop project without a force push.
+
+## Empty-project chat entry points · 2.0.5
+
+- V2-01 / CHAT-01: **New chat** remains visible when Chats is collapsed.
+  A project with no selected chat also has a **Create chat** button in its
+  empty workspace. Both use the existing creation flow and focus the message
+  box. Creation ignores another click while a request is pending.
+- `npm run check` passed formatting, lint, typecheck, build, and all 24 source
+  tests. The focused `empty projects` desktop regression passed from source.
+  It collapses Files and Chats in two empty projects, reloads the UI, starts
+  chats through both entry points, sends a demo response, and checks project
+  isolation while keeping Chats collapsed.
+- `npm run package:linux` and `node scripts/release-checksum.mjs` produced
+  the local 2.0.5 Debian package and checksum. The package checksum passed
+  verification. All nine desktop tests passed against the unpacked executable:
+
+  ```sh
+  RESOS_EXECUTABLE="$PWD/release/linux-unpacked/resos" xvfb-run -a npm run test:desktop
+  ```
+
+- Visually inspected the packaged empty workspace with both sections collapsed
+  at normal and minimum window sizes. The adversarial diff review found no
+  remaining defects. No live model call, system installation, or publishing
+  was performed. Build and package outputs remain ignored under `dist/` and
+  `release/`; screenshots were temporary files under `/tmp`.

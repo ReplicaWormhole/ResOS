@@ -612,10 +612,15 @@ export class ChatPane {
       );
     if (!chat?.turns.length)
       row('empty', null, () => {
-        const empty = document.createElement('p');
-        empty.textContent = chat
+        const empty = document.createElement('div');
+        empty.className = 'chat-empty';
+        const text = document.createElement('p');
+        text.textContent = chat
           ? 'Send a message to start this conversation.'
           : 'Create a chat to get started.';
+        empty.append(text);
+        if (!chat)
+          empty.append(this.action('Create chat', () => this.create()));
         return empty;
       });
     for (const turn of chat?.turns ?? []) {
@@ -1330,7 +1335,7 @@ export class ChatPane {
 
   private async create(): Promise<void> {
     const id = this.projectId;
-    if (!id) return;
+    if (!id || this.newButton.disabled) return;
     this.newButton.disabled = true;
     this.error.hidden = true;
     try {

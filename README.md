@@ -22,8 +22,9 @@ The editor and saved notebook are available without a live Codex connection.
 
 Chat opens in the main workspace by default. The left sidebar has separate
 **Files** and **Chats** sections that you can collapse independently. Their
-open state is saved for each project. Start or switch chats and search the
-project's saved conversations under **Chats**.
+open state is saved for each project. **New chat** stays visible when Chats
+is collapsed. A project without a chat also offers **Create chat** in the
+workspace. Expand **Chats** to switch chats or search saved conversations.
 
 Opening a file from Chat view shows the editor. Use **Chat**, **Editor**, or
 **Split view** above the workspace to choose what is visible. Changing views

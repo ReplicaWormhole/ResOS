@@ -103,6 +103,94 @@ test(
 );
 
 test(
+  'empty projects can start chats with both sidebar sections collapsed',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-empty-project-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const alpha = join(root, 'Alpha');
+    const beta = join(root, 'Beta');
+    await Promise.all([mkdir(alpha), mkdir(beta)]);
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const app = await electron.launch({
+      executablePath,
+      args: executablePath ? [] : ['.'],
+      chromiumSandbox: true,
+      env: {
+        ...process.env,
+        RESOS_RUNTIME: 'demo',
+        XDG_CONFIG_HOME: join(root, 'config'),
+      },
+      timeout: 15_000,
+    });
+    try {
+      const window = await app.firstWindow();
+      const projectList = window.getByRole('list', { name: 'Saved projects' });
+      for (const folder of [alpha, beta]) {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [path],
+          });
+        }, folder);
+        await window.getByRole('button', { name: 'Add Project' }).click();
+        await window.getByRole('heading', { name: basename(folder) }).waitFor();
+        for (const name of ['Files', 'Chats'])
+          await window.getByRole('button', { name, exact: true }).click();
+        await window.locator('#files-content').waitFor({ state: 'hidden' });
+        await window.locator('#chats-content').waitFor({ state: 'hidden' });
+      }
+      await window.reload();
+      await projectList.getByRole('button', { name: 'Alpha' }).click();
+      await window.locator('#chats-content').waitFor({ state: 'hidden' });
+      const newChat = window.getByRole('button', {
+        name: 'New chat',
+        exact: true,
+      });
+      await newChat.waitFor();
+      const input = window.getByRole('textbox', {
+        name: 'Message',
+        exact: true,
+      });
+      assert.equal(await input.isEnabled(), false);
+      await window
+        .getByRole('button', { name: 'Create chat', exact: true })
+        .click();
+      await window.locator('#chat-input:enabled:focus').waitFor();
+      await input.fill('First question from the empty workspace');
+      await window.locator('#chat-send:enabled').waitFor();
+      await input.press('Enter');
+      await window.locator('#chat-transcript [data-status=complete]').waitFor();
+      await newChat.click();
+      await window.locator('#chat-input:enabled:focus').waitFor();
+      assert.equal(await input.inputValue(), '');
+      await window.locator('#chats-content').waitFor({ state: 'hidden' });
+
+      await projectList.getByRole('button', { name: 'Beta' }).click();
+      await window
+        .getByRole('button', { name: 'Create chat', exact: true })
+        .waitFor();
+      assert.equal(await input.isEnabled(), false);
+      await newChat.click();
+      await window.locator('#chat-input:enabled:focus').waitFor();
+      const projects = await window.evaluate(() => window.resos.listProjects());
+      const counts = await window.evaluate(
+        (projects) =>
+          Promise.all(
+            projects.map(
+              async ({ id }) => (await window.resos.listChats(id)).length,
+            ),
+          ),
+        projects,
+      );
+      assert.deepEqual(counts, [2, 1]);
+    } finally {
+      await app.close();
+    }
+  },
+);
+
+test(
   'theme switch stays visible and preserves editor state and the saved preference',
   { timeout: 45_000 },
   async (t) => {

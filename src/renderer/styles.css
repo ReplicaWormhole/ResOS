@@ -435,6 +435,10 @@ p {
   scrollbar-gutter: stable;
 }
 
+.chat-empty button {
+  width: auto;
+}
+
 #chat-transcript article,
 #parent-chat article {
   margin: 20px 0 28px;
