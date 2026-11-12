@@ -73,6 +73,8 @@ appear in right-aligned bubbles, followed by the assistant's answer.
 Use **Dark mode** at the bottom of the left sidebar to switch between a
 light theme and a dark gray theme. It applies to chats, menus, and the
 editor, and your choice is remembered across projects and app restarts.
+Marked passages use soft gray backgrounds in both themes, with a stronger
+gray shade on hover or keyboard focus when they open a linked discussion.
 
 Use **Stop response** to cancel a queued or running attempt and **Retry
 response** to run the same question again. **Run context** shows the saved

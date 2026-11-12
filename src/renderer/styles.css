@@ -16,6 +16,8 @@
   --editor-line: #f5f5f5;
   --editor-selection: #d9d9d9;
   --link: #1859a9;
+  --mark-bg: #e2e2e2;
+  --mark-hover: #d2d2d2;
 }
 
 :root[data-theme='dark'] {
@@ -32,6 +34,8 @@
   --editor-line: #282828;
   --editor-selection: #454545;
   --link: #a7c7ff;
+  --mark-bg: #3d3d3d;
+  --mark-hover: #505050;
 }
 
 body {
@@ -734,9 +738,22 @@ article[data-role='user'] > .message-actions > summary {
   margin: 4px 4px 4px 0;
 }
 
+.chat-rich mark {
+  color: inherit;
+  background-color: var(--mark-bg);
+  border-radius: 3px;
+  padding-block: 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .chat-rich mark[role='button'] {
   cursor: pointer;
-  border-radius: 2px;
+}
+
+.chat-rich mark[role='button']:hover,
+.chat-rich mark[role='button']:focus-visible {
+  background-color: var(--mark-hover);
 }
 
 .file-badge {

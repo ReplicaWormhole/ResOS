@@ -396,3 +396,32 @@ every jump validates the range again before selecting it.
   under `dist/` and `release/`; visual-check screenshots are temporary `/tmp`
   artifacts. Re-adding restores saved history after restart; unsent drafts
   retain the existing session-only lifetime.
+
+## Neutral passage markings · 2.0.7
+
+- V2-01 / CHAT-02: saved passage markings now use theme-specific gray
+  backgrounds instead of the browser's yellow default. Light mode uses
+  `#e2e2e2`; dark mode uses `#3d3d3d`. Text inherits its surrounding color,
+  and small rounded corners repeat on wrapped lines. Linked markings use a
+  stronger gray on hover and keyboard focus, retaining the focus outline.
+- `npm run check` passed formatting, lint, typecheck, build, and all 27 source
+  tests. `npm run package:linux` and `node scripts/release-checksum.mjs`
+  produced the 2.0.7 Debian package and sidecar. All ten packaged desktop
+  tests passed, including selection, nested discussions, and theme switching:
+
+  ```sh
+  RESOS_EXECUTABLE="$PWD/release/linux-unpacked/resos" xvfb-run -a npm run test:desktop
+  ```
+
+- Inspected packaged light/dark screenshots with wrapped prose, marked math,
+  a local annotation, and markings in both user and assistant messages.
+  An isolated demo-profile check confirmed neutral gray backgrounds,
+  inherited text color, hover/focus states, visible keyboard focus, and
+  Enter-to-open discussion navigation. The sample's lowest text/background
+  contrast was 6.95:1 across the two themes and interactive states.
+- The installer checksum and Debian version/architecture metadata passed.
+  Adversarial review found no remaining defects. Changes are limited to
+  styles, documentation, and version metadata. Build/package outputs remain
+  ignored under `dist/` and `release/`; visual-check screenshots and the
+  runnable demo check are temporary `/tmp` artifacts. No live model call,
+  system installation, or remote update was performed.
