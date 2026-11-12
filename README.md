@@ -26,6 +26,12 @@ open state is saved for each project. **New chat** stays visible when Chats
 is collapsed. A project without a chat also offers **Create chat** in the
 workspace. Expand **Chats** to switch chats or search saved conversations.
 
+Right-click a project, or focus it and press **Shift+F10**, to open its menu.
+**Pin** keeps it above unpinned projects; **Unpin** restores its normal order.
+**Remove project** hides it from the sidebar after confirmation. Its folder
+and saved chats stay intact. Add the same folder again to restore the project
+and its history. Stop or wait for an active response before removing a project.
+
 Opening a file from Chat view shows the editor. Use **Chat**, **Editor**, or
 **Split view** above the workspace to choose what is visible. Changing views
 keeps open tabs, edits, chat drafts, and reading position.

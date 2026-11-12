@@ -390,6 +390,19 @@ export class ChatPane {
     return card;
   }
 
+  hide(): void {
+    this.rememberScroll();
+    this.projectId = undefined;
+    this.available = false;
+    this.request++;
+    this.chats = [];
+    this.approvals = [];
+    this.fileNotes = [];
+    this.showNotes(this.fileNotes);
+    this.error.hidden = true;
+    this.render(true);
+  }
+
   show(projectId: string, root: string): void {
     this.root = root;
     if (this.projectId !== projectId) {

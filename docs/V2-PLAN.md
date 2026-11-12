@@ -13,6 +13,10 @@ desktop installer. Additional coding harnesses are deferred.
   and offer **Create chat** in an empty workspace. Remember each project's
   sidebar state and keep the root chat selected while reading a nested
   discussion. Keep saved chats available when the project folder is missing.
+- Add a right-click project menu with **Pin/Unpin** and **Remove project**,
+  also available through Shift+F10. Pinning orders projects first; removal
+  preserves folders and notebook identity so adding the same folder restores
+  saved chats. Confirm removal and reject it while a response is active.
 - Make chat the default center view. Use a readable transcript column,
   scrollable history, a composer anchored at the bottom, and compact message
   actions. Open files in an editor tab with a clear route back to chat.

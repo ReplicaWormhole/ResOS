@@ -4,6 +4,8 @@ import type { DesktopApi } from '../shared/desktop-api.js';
 const api: DesktopApi = {
   listProjects: () => ipcRenderer.invoke('projects:list'),
   chooseProject: () => ipcRenderer.invoke('projects:choose'),
+  pinProject: (id, pinned) => ipcRenderer.invoke('projects:pin', id, pinned),
+  removeProject: (id) => ipcRenderer.invoke('projects:remove', id),
   projectAvailable: (id) => ipcRenderer.invoke('projects:available', id),
   locateProject: (id) => ipcRenderer.invoke('projects:locate', id),
   listChats: (id) => ipcRenderer.invoke('chats:list', id),

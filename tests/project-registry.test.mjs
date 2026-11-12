@@ -55,6 +55,73 @@ test('rejects missing paths and files and accepts a later directory', async (t) 
   assert.deepEqual(await registry.list(), [saved]);
 });
 
+test('pin order persists and unpin restores registration order', async (t) => {
+  const { root, registryFile } = await fixture(t);
+  const registry = new ProjectRegistry(registryFile);
+  const alpha = await registry.add(root);
+  const betaRoot = join(root, 'beta');
+  await mkdir(betaRoot);
+  const beta = await registry.add(betaRoot);
+  await registry.pin(beta.id, true);
+  const reopened = new ProjectRegistry(registryFile);
+  assert.deepEqual(
+    (await reopened.list()).map(({ id }) => id),
+    [beta.id, alpha.id],
+  );
+  assert.equal((await reopened.list())[0].pinned, true);
+  await reopened.pin(beta.id, false);
+  assert.deepEqual(
+    (await registry.list()).map(({ id }) => id),
+    [alpha.id, beta.id],
+  );
+  await assert.rejects(registry.pin(alpha.id, 'true'), /Invalid pin state/);
+  await assert.rejects(registry.pin('missing', true), /Project not found/);
+});
+
+test('removal keeps files and restores the same identity when re-added', async (t) => {
+  const { root, registryFile } = await fixture(t);
+  const registry = new ProjectRegistry(registryFile);
+  const folder = join(root, 'project');
+  const alias = join(root, 'alias');
+  await mkdir(folder);
+  await symlink(folder, alias, 'dir');
+  const file = join(folder, 'notes.txt');
+  await writeFile(file, 'Keep this research.');
+  const original = await registry.add(folder);
+  await registry.pin(original.id, true);
+  await registry.remove(original.id);
+  const reopened = new ProjectRegistry(registryFile);
+  assert.deepEqual(await reopened.list(), []);
+  assert.equal(await readFile(file, 'utf8'), 'Keep this research.');
+  await assert.rejects(reopened.pin(original.id, true), /Project not found/);
+  await assert.rejects(reopened.remove(original.id), /Project not found/);
+  await assert.rejects(reopened.relink(original.id, root), /Project not found/);
+  const [restored, duplicate] = await Promise.all([
+    reopened.add(alias),
+    reopened.add(folder),
+  ]);
+  assert.equal(restored.id, original.id);
+  assert.equal(restored.pinned, false);
+  assert.deepEqual(restored, duplicate);
+  assert.deepEqual(await registry.list(), [restored]);
+});
+
+test('rejects invalid saved pin and removal flags without changing the registry', async (t) => {
+  const { root, registryFile } = await fixture(t);
+  const registry = new ProjectRegistry(registryFile);
+  const project = await registry.add(root);
+  for (const flags of [{ pinned: 'yes' }, { removed: 1 }]) {
+    const data = JSON.stringify({
+      version: 1,
+      projects: [{ ...project, ...flags }],
+    });
+    await writeFile(registryFile, data);
+    await assert.rejects(registry.list(), /unsupported format/);
+    await assert.rejects(registry.remove(project.id), /unsupported format/);
+    assert.equal(await readFile(registryFile, 'utf8'), data);
+  }
+});
+
 test('surfaces a corrupt registry and preserves its contents', async (t) => {
   const { root, registryFile } = await fixture(t);
   await mkdir(join(root, 'app-data'));

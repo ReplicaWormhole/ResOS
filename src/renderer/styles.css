@@ -204,6 +204,38 @@ p {
   border-top: 1px solid var(--border);
 }
 
+.project-pin {
+  float: right;
+  margin-inline-start: 6px;
+  font-size: 0.7em;
+  color: var(--muted);
+}
+
+#project-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--rail);
+  color: var(--text);
+  box-shadow: 0 8px 24px #0003;
+}
+
+#project-menu button {
+  display: block;
+  border: 0;
+  padding: 10px 12px;
+}
+
+#project-menu button + button {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+}
+
 .sidebar-section h2 {
   margin: 0;
 }

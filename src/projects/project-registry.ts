@@ -4,6 +4,14 @@ import { basename, isAbsolute } from 'node:path';
 import type { Project } from '../shared/desktop-api.js';
 import { readJson, replaceJson } from '../storage/local-json.js';
 
+interface SavedProject extends Project {
+  readonly removed?: boolean;
+}
+
+function visibleProject({ id, root, name, pinned }: SavedProject): Project {
+  return { id, root, name, ...(pinned === undefined ? {} : { pinned }) };
+}
+
 async function resolveFolder(folder: string): Promise<string> {
   const root = await realpath(folder);
   if (!(await stat(root)).isDirectory())
@@ -25,7 +33,7 @@ export async function isAvailable(root: string): Promise<boolean> {
   }
 }
 
-function isProject(value: unknown): value is Project {
+function isProject(value: unknown): value is SavedProject {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -37,7 +45,9 @@ function isProject(value: unknown): value is Project {
     isAbsolute(value.root) &&
     'name' in value &&
     typeof value.name === 'string' &&
-    value.name.length > 0
+    value.name.length > 0 &&
+    (!('pinned' in value) || typeof value.pinned === 'boolean') &&
+    (!('removed' in value) || typeof value.removed === 'boolean')
   );
 }
 
@@ -47,6 +57,13 @@ export class ProjectRegistry {
   constructor(private readonly filePath: string) {}
 
   async list(): Promise<readonly Project[]> {
+    return (await this.records())
+      .filter((project) => !project.removed)
+      .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned))
+      .map(visibleProject);
+  }
+
+  private async records(): Promise<readonly SavedProject[]> {
     const data = await readJson(this.filePath);
     if (data === undefined) return [];
     if (
@@ -67,16 +84,48 @@ export class ProjectRegistry {
     return this.mutate(async (projects) => {
       const root = await resolveFolder(folder);
       const existing = projects.find((project) => project.root === root);
-      if (existing) return existing;
+      if (existing) {
+        if (!existing.removed) return existing;
+        const restored = visibleProject(existing);
+        projects[projects.indexOf(existing)] = restored;
+        return restored;
+      }
       const project = { id: randomUUID(), root, name: basename(root) || root };
       projects.push(project);
       return project;
     });
   }
 
+  pin(id: string, pinned: boolean): Promise<Project> {
+    return this.mutate(async (projects) => {
+      if (typeof pinned !== 'boolean') throw new Error('Invalid pin state.');
+      const index = projects.findIndex(
+        (project) => project.id === id && !project.removed,
+      );
+      if (index < 0) throw new Error('Project not found.');
+      const project = { ...visibleProject(projects[index]!), pinned };
+      projects[index] = project;
+      return project;
+    });
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.mutate(async (projects) => {
+      const index = projects.findIndex(
+        (project) => project.id === id && !project.removed,
+      );
+      if (index < 0) throw new Error('Project not found.');
+      const project = { ...projects[index]!, removed: true, pinned: false };
+      projects[index] = project;
+      return project;
+    });
+  }
+
   relink(id: string, folder: string): Promise<Project> {
     return this.mutate(async (projects) => {
-      const index = projects.findIndex((project) => project.id === id);
+      const index = projects.findIndex(
+        (project) => project.id === id && !project.removed,
+      );
       if (index < 0) throw new Error('Project not found.');
       const project = projects[index]!;
       if (await isAvailable(project.root))
@@ -92,10 +141,10 @@ export class ProjectRegistry {
   }
 
   private mutate(
-    update: (projects: Project[]) => Promise<Project>,
+    update: (projects: SavedProject[]) => Promise<Project>,
   ): Promise<Project> {
     const write = this.pendingWrite.then(async () => {
-      const previous = await this.list();
+      const previous = await this.records();
       const projects = [...previous];
       const project = await update(projects);
       if (

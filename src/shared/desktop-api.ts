@@ -4,11 +4,14 @@ export interface Project {
   readonly id: string;
   readonly root: string;
   readonly name: string;
+  readonly pinned?: boolean;
 }
 
 export interface DesktopApi extends ChatApi {
   listProjects(): Promise<readonly Project[]>;
   chooseProject(): Promise<Project | null>;
+  pinProject(projectId: string, pinned: boolean): Promise<Project>;
+  removeProject(projectId: string): Promise<void>;
   projectAvailable(projectId: string): Promise<boolean>;
   locateProject(projectId: string): Promise<Project | null>;
   listDirectory(

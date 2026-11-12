@@ -361,3 +361,38 @@ every jump validates the range again before selecting it.
   remaining defects. No live model call, system installation, or publishing
   was performed. Build and package outputs remain ignored under `dist/` and
   `release/`; screenshots were temporary files under `/tmp`.
+
+## Project pinning and removal · 2.0.6
+
+- V2-01 / PROJ-03: project rows have a right-click menu with **Pin/Unpin**
+  and **Remove project**. Shift+F10 and the context-menu key open the same
+  menu; arrow keys, Home, End, Escape, and Tab support keyboard navigation.
+  Pinned projects appear first, with a visible badge and saved ordering.
+- Removal confirms that files and saved chats are retained. The registry
+  marks the entry removed and clears its pin. Adding the same resolved root
+  restores the original ID and notebook. Current-project removal selects a
+  remaining project; final-project removal clears the workspace. In-session
+  editor buffers and chat drafts remain cached. Main-process validation rejects
+  invalid pin values, unknown or removed projects, and removal during a response.
+- `npm run check` passed formatting, lint, typecheck, build, and all 27 source
+  tests. The focused project-registry and project-menu checks also passed.
+  Coverage includes pin persistence and unpin order, invalid saved flags,
+  cancellation, keyboard navigation and dismissal, removing a nonselected,
+  current, and final project, blocked removal during a response, unchanged
+  files, restored chat IDs and turns after restart, and retained session drafts.
+- `npm run package:linux` and `node scripts/release-checksum.mjs` produced
+  the local 2.0.6 Debian package and SHA-256 sidecar. All ten desktop tests
+  passed against the packaged executable:
+
+  ```sh
+  RESOS_EXECUTABLE="$PWD/release/linux-unpacked/resos" xvfb-run -a npm run test:desktop
+  ```
+
+- The package checksum and Debian version/architecture metadata passed
+  verification. Inspected light and dark menus and minimum-window placement;
+  corner placement, expanded-state accessibility, and CSP checks passed.
+  Adversarial review found no remaining defects. No live model call, system
+  installation, or publishing was performed. Build/package outputs are ignored
+  under `dist/` and `release/`; visual-check screenshots are temporary `/tmp`
+  artifacts. Re-adding restores saved history after restart; unsent drafts
+  retain the existing session-only lifetime.

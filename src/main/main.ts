@@ -98,6 +98,23 @@ function registerDesktopHandlers(
   ipcMain.handle('projects:available', async (event, id) =>
     isAvailable((await projectFor(event, id)).root),
   );
+  ipcMain.handle('projects:pin', (event, id, pinned) =>
+    changeWorkspace(async () => {
+      const project = await projectFor(event, id);
+      if (typeof pinned !== 'boolean') throw new Error('Invalid pin state.');
+      return registry.pin(project.id, pinned);
+    }),
+  );
+  ipcMain.handle('projects:remove', (event, id) =>
+    changeWorkspace(async () => {
+      const project = await projectFor(event, id);
+      if (chats.isRunning(project.id))
+        throw new Error(
+          'Stop or wait for the running response before removing this project.',
+        );
+      await registry.remove(project.id);
+    }),
+  );
   ipcMain.handle('projects:locate', async (event, id) => {
     const project = await projectFor(event, id);
     if (chats.isRunning(project.id))

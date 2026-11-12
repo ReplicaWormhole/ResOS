@@ -4,6 +4,7 @@ import { FileTree } from './file-tree.js';
 import { SelectionToolbar } from './selection-toolbar.js';
 import type { FileSource } from '../shared/notebook-api.js';
 import { WorkspaceEditor } from './workspace-editor.js';
+import { ProjectMenu } from './project-menu.js';
 
 declare global {
   interface Window {
@@ -273,7 +274,48 @@ locate.addEventListener('click', async () => {
 window.addEventListener('focus', () => void refreshAvailability());
 window.setInterval(() => void refreshAvailability(), 1500);
 
-function renderProjects(selected: Project | undefined): void {
+const projectMenu = new ProjectMenu(
+  async (project) => {
+    errorMessage.hidden = true;
+    await window.resos.pinProject(project.id, !project.pinned);
+    projects = await window.resos.listProjects();
+    renderProjects(selected);
+    focusProject(project.id);
+  },
+  async (project) => {
+    if (
+      !window.confirm(
+        'Remove “' +
+          project.name +
+          '” from ResOS?\n\nYour folder and saved chats will be kept. Add the same folder again to restore this project.',
+      )
+    )
+      return;
+    errorMessage.hidden = true;
+    await window.resos.removeProject(project.id);
+    projects = await window.resos.listProjects();
+    const next =
+      selected && projects.some((project) => project.id === selected?.id)
+        ? selected
+        : projects[0];
+    renderProjects(next);
+    focusProject(next?.id);
+  },
+  showError,
+);
+
+function focusProject(id?: string): void {
+  const button = [...list.querySelectorAll('button')].find(
+    (button) => button.dataset.projectId === id,
+  );
+  (button ?? addButton).focus();
+}
+
+function renderProjects(next: Project | undefined): void {
+  projectMenu.close();
+  projects = [...projects].sort(
+    (a, b) => Number(!!b.pinned) - Number(!!a.pinned),
+  );
   list.replaceChildren();
   for (const project of projects) {
     const item = document.createElement('li');
@@ -282,11 +324,35 @@ function renderProjects(selected: Project | undefined): void {
     button.dataset.projectId = project.id;
     button.textContent = project.name;
     button.title = project.root;
+    if (project.pinned) {
+      const pin = document.createElement('span');
+      pin.className = 'project-pin';
+      pin.setAttribute('aria-hidden', 'true');
+      pin.textContent = 'Pinned';
+      button.append(pin);
+    }
     button.addEventListener('click', () => selectProject(project));
+    projectMenu.attach(button, project);
     item.append(button);
     list.append(item);
   }
-  if (selected) selectProject(selected);
+  if (next) selectProject(next);
+  else {
+    selected = undefined;
+    available = undefined;
+    availabilityRequest++;
+    selectionToolbar.hide();
+    editor.hide();
+    chat.hide();
+    workspace.hidden = true;
+    views.hidden = true;
+    files.hidden = true;
+    chats.hidden = true;
+    missing.hidden = true;
+    title.textContent = 'Choose a project';
+    root.textContent = 'Add a folder to start a project.';
+    root.title = '';
+  }
 }
 
 function showError(error: unknown): void {

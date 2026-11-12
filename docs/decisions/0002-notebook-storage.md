@@ -9,6 +9,14 @@ registry. Serialize notebook mutations and atomically replace the snapshot.
 Persist each accepted question, attempt, and streamed chunk. On startup,
 mark unfinished attempts interrupted and keep any saved partial response.
 
+Project pinning and removal use optional `pinned` and `removed` flags in the
+version-1 registry. Removed entries stay in that file to preserve their IDs,
+but are excluded from the sidebar and workspace operations. Removing a project
+clears its pin and leaves notebook records and workspace files untouched.
+Adding the same resolved folder restores its original registry entry. Registry
+mutations remain serialized and atomic. Removing a project with an active
+response is rejected before changing the registry.
+
 The M03 desktop app starts with a fresh notebook. Browser notebook import
 is outside the current release scope. The legacy checkout remains the
 reference and retains its data. A future import would read a copy and

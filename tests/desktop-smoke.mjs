@@ -191,6 +191,218 @@ test(
 );
 
 test(
+  'project menu pins, removes, and restores projects without losing files or chats',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-project-menu-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const alpha = join(root, 'Alpha');
+    const beta = join(root, 'Beta');
+    await Promise.all([mkdir(alpha), mkdir(beta)]);
+    const notes = join(alpha, 'notes.txt');
+    await writeFile(notes, 'Saved research');
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = () =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: {
+          ...process.env,
+          RESOS_RUNTIME: 'demo',
+          XDG_CONFIG_HOME: join(root, 'config'),
+        },
+        timeout: 15_000,
+      });
+    const add = async (app, window, folder) => {
+      await app.evaluate(({ dialog }, path) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [path],
+        });
+      }, folder);
+      await window.getByRole('button', { name: 'Add Project' }).click();
+      await window.getByRole('heading', { name: basename(folder) }).waitFor();
+    };
+    const app = await launch();
+    let original;
+    let chatId;
+    try {
+      const window = await app.firstWindow();
+      const list = window.getByRole('list', { name: 'Saved projects' });
+      const project = (name) => list.getByRole('button', { name, exact: true });
+      const menu = window.getByRole('menu', { name: 'Project options' });
+      await add(app, window, alpha);
+      await add(app, window, beta);
+      await project('Alpha').click();
+      await window
+        .getByRole('button', { name: 'New chat', exact: true })
+        .click();
+      await window.locator('#chat-input:enabled:focus').waitFor();
+      const input = window.getByRole('textbox', {
+        name: 'Message',
+        exact: true,
+      });
+      await input.fill('Keep my draft');
+      await window
+        .getByRole('button', { name: 'notes.txt', exact: true })
+        .click();
+      const contents = window.getByRole('textbox', { name: 'File contents' });
+      await contents.press('Control+End');
+      await contents.pressSequentially(' and unsaved edits');
+      await window
+        .getByRole('button', { name: 'Split view', exact: true })
+        .click();
+      [original] = await window.evaluate(() => window.resos.listProjects());
+      [chatId] = await window.evaluate(
+        async (id) => (await window.resos.listChats(id)).map(({ id }) => id),
+        original.id,
+      );
+
+      await project('Beta').click({ button: 'right' });
+      await menu.getByRole('menuitem', { name: 'Pin', exact: true }).click();
+      await list
+        .locator('button')
+        .first()
+        .getByText('Pinned', { exact: true })
+        .waitFor();
+      assert.equal(
+        await list.locator('button').first().getAttribute('data-project-id'),
+        (await window.evaluate(() => window.resos.listProjects()))[0].id,
+      );
+      assert.equal(await project('Alpha').getAttribute('aria-current'), 'true');
+      assert.equal(await input.inputValue(), 'Keep my draft');
+      assert.match(await contents.innerText(), /and unsaved edits/);
+      await project('Beta').press('Shift+F10');
+      await menu.getByRole('menuitem', { name: 'Unpin' }).waitFor();
+      await window.keyboard.press('Escape');
+      await menu.waitFor({ state: 'hidden' });
+      assert.equal(
+        await project('Beta').evaluate(
+          (node) => node === globalThis.document.activeElement,
+        ),
+        true,
+      );
+      await project('Beta').press('Shift+F10');
+      await window.keyboard.press('Enter');
+      await list
+        .locator('button')
+        .first()
+        .getByText('Alpha', { exact: true })
+        .waitFor();
+      await project('Beta').press('Shift+F10');
+      await window.keyboard.press('ArrowDown');
+      assert.equal(
+        await menu
+          .getByRole('menuitem', { name: 'Remove project' })
+          .evaluate((node) => node === globalThis.document.activeElement),
+        true,
+      );
+      await window.keyboard.press('Home');
+      await window.keyboard.press('Enter');
+      await project('Beta').getByText('Pinned', { exact: true }).waitFor();
+      await project('Beta').click({ button: 'right' });
+      await window.getByRole('heading', { name: 'Alpha', exact: true }).click();
+      await menu.waitFor({ state: 'hidden' });
+
+      await project('Alpha').click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.dismiss());
+      await menu.getByRole('menuitem', { name: 'Remove project' }).click();
+      assert.equal(await list.getByRole('button').count(), 2);
+      await assert.rejects(
+        window.evaluate(
+          (id) => window.resos.pinProject(id, 'yes'),
+          original.id,
+        ),
+        /Invalid pin state/,
+      );
+      await window.evaluate(
+        ({ id, chatId }) =>
+          window.resos.sendChat(id, chatId, 'Saved question', 'menu-test'),
+        { id: original.id, chatId },
+      );
+      await window.locator('#chat-transcript [data-status=running]').waitFor();
+      await assert.rejects(
+        window.evaluate((id) => window.resos.removeProject(id), original.id),
+        /running response/,
+      );
+      await window.locator('#chat-transcript [data-status=complete]').waitFor();
+      await project('Alpha').click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Remove project' }).click();
+      await project('Alpha').waitFor({ state: 'hidden' });
+      await window
+        .getByRole('heading', { name: 'Beta', exact: true })
+        .waitFor();
+      await assert.rejects(
+        window.evaluate(
+          (id) => window.resos.readFile(id, 'notes.txt'),
+          original.id,
+        ),
+        /Project not found/,
+      );
+      assert.equal(await readFile(notes, 'utf8'), 'Saved research');
+      await add(app, window, alpha);
+      assert.equal(
+        await project('Alpha').getAttribute('data-project-id'),
+        original.id,
+      );
+      await contents
+        .getByText('Saved research and unsaved edits', { exact: true })
+        .waitFor();
+      assert.equal(await input.inputValue(), 'Keep my draft');
+      const chats = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        original.id,
+      );
+      assert.equal(chats[0].id, chatId);
+      assert.equal(chats[0].turns[0].question, 'Saved question');
+
+      await window.reload();
+      await project('Beta').getByText('Pinned', { exact: true }).waitFor();
+      assert.equal(await project('Beta').getAttribute('aria-current'), 'true');
+      for (const name of ['Alpha', 'Beta']) {
+        await project(name).click({ button: 'right' });
+        window.once('dialog', (dialog) => void dialog.accept());
+        await menu.getByRole('menuitem', { name: 'Remove project' }).click();
+        await project(name).waitFor({ state: 'hidden' });
+      }
+      await window.getByRole('heading', { name: 'Choose a project' }).waitFor();
+      await window.locator('#workspace').waitFor({ state: 'hidden' });
+      assert.deepEqual(
+        await window.evaluate(() => window.resos.listProjects()),
+        [],
+      );
+    } finally {
+      await app.close();
+    }
+    const reopened = await launch();
+    try {
+      const window = await reopened.firstWindow();
+      await window.getByRole('button', { name: 'Add Project' }).waitFor();
+      assert.deepEqual(
+        await window.evaluate(() => window.resos.listProjects()),
+        [],
+      );
+      await add(reopened, window, alpha);
+      const [restored] = await window.evaluate(() =>
+        window.resos.listProjects(),
+      );
+      assert.equal(restored.id, original.id);
+      const [chat] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        restored.id,
+      );
+      assert.equal(chat.id, chatId);
+      assert.equal(chat.turns[0].question, 'Saved question');
+      assert.equal(await readFile(notes, 'utf8'), 'Saved research');
+    } finally {
+      await reopened.close();
+    }
+  },
+);
+
+test(
   'theme switch stays visible and preserves editor state and the saved preference',
   { timeout: 45_000 },
   async (t) => {
