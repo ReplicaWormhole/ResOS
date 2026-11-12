@@ -112,6 +112,7 @@ accepts a version on the dispatch revision or an exact `v`-prefixed tag.
 It checks the version, builds the package, installs it on Ubuntu 24.04,
 runs the desktop suite, and uploads the package and checksum as workflow
 artifacts. GitHub requires the workflow file to be present on the default
-branch before manual dispatch. Both `main` and `master` contain the desktop
-project and its workflows. Publishing a GitHub Release is a separate action.
+branch before manual dispatch. `main` is the only branch and the repository's
+default; it contains the current desktop project, workflows, and narrated demo.
+Publishing a GitHub Release is a separate action.
 [GitHub manual dispatch documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)

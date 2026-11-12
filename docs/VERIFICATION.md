@@ -159,7 +159,7 @@ every jump validates the range again before selecting it.
   a temporary Unix socket without mounting credentials in the container.
 - `actionlint` 1.7.10 passed both workflows. The manual release workflow
   has not run on GitHub. It needs to be present on the repository's default
-  branch, currently the legacy `master`, before it can be dispatched.
+  branch, which was the legacy `master` at the time, before it can be dispatched.
 
 ## V2-01 · Chat-first workspace
 
@@ -467,3 +467,19 @@ every jump validates the range again before selecting it.
   review found no remaining defects. No live model call, system installation,
   or remote update was performed. `dist/` and `release/` outputs remain ignored;
   visual-check screenshots are temporary `/tmp` artifacts.
+
+## Single default branch · 2026-11-12
+
+- Compared remote heads after fetching: `master` had no unique commits, while
+  `main` was five commits ahead, including the 2.0.8 changes and the narrated
+  demo with its README preview. All `master` history remains reachable on `main`.
+- Changed the GitHub default branch to `main`, then deleted `master` with a
+  lease on its inspected commit to reject any concurrent branch update.
+- `git ls-remote --heads origin` confirmed only `main` remains. The GitHub
+  repository API and `git ls-remote --symref origin HEAD` both confirmed `main`
+  is the default. The local remote HEAD also points to `origin/main`.
+- No open pull requests needed their base branch changed. The CI workflow has
+  no branch-name filter; the release workflow is present on `main`.
+- Updated the release instructions. Documentation formatting and
+  `git diff --check` passed. Adversarial review confirmed that no unique history
+  or demo media was lost. No application code changed.
