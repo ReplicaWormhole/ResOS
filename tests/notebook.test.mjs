@@ -22,6 +22,226 @@ async function until(check) {
   assert.fail('Expected chat state did not arrive.');
 }
 
+test('deleting a chat removes only its discussion subtree and preserves saved quotes elsewhere', async (t) => {
+  const path = await fixture(t);
+  const store = new NotebookStore(path);
+  const changed = [];
+  const service = new ChatService(
+    store,
+    {
+      async *stream() {
+        yield 'Saved answer';
+      },
+    },
+    (id) => changed.push(id),
+  );
+  t.after(() => service.close());
+  const project = { id: 'a', root: '/workspace/a', name: 'A' };
+  const root = await service.create(project.id);
+  const keeper = await service.create(project.id);
+  const other = await service.create('b');
+  const fileChat = await service.createFileChat(project.id, {
+    path: 'notes.txt',
+  });
+  await service.addFileNote(
+    project.id,
+    {
+      projectId: project.id,
+      path: 'notes.txt',
+      text: 'Saved file note',
+      start: 0,
+      end: 15,
+      startLine: 1,
+      endLine: 1,
+      capturedAt: '2026-11-12T12:00:00Z',
+      unsaved: false,
+      fingerprint: 'a'.repeat(64),
+    },
+    'Keep this annotation',
+  );
+  await service.send(project, root.id, 'Original source', 'root');
+  await until(() => !service.isRunning(project.id));
+  const [saved] = await service.list(project.id);
+  const turn = saved.turns[0];
+  const passage = {
+    conversationId: root.id,
+    messageId: turn.id,
+    revisionId: turn.revisions?.at(-1)?.id ?? turn.id,
+    start: 0,
+    end: 8,
+    quote: 'Original',
+  };
+  const child = await service.createDiscussion(project.id, passage);
+  await service.send(project, child.id, 'Child source', 'child');
+  await until(() => !service.isRunning(project.id));
+  const childTurn = (await service.list(project.id)).find(
+    ({ id }) => id === child.id,
+  ).turns[0];
+  const grandchild = await service.createDiscussion(project.id, {
+    conversationId: child.id,
+    messageId: childTurn.id,
+    revisionId: childTurn.revisions?.at(-1)?.id ?? childTurn.id,
+    start: 0,
+    end: 5,
+    quote: 'Child',
+  });
+  await service.send(
+    project,
+    keeper.id,
+    'Keep this quote',
+    'keeper',
+    [],
+    [passage],
+  );
+  await until(() => !service.isRunning(project.id));
+  const before = await readFile(path, 'utf8');
+  await assert.rejects(
+    service.deleteChat('b', root.id),
+    /not found in this project/,
+  );
+  await assert.rejects(service.deleteChat(project.id, 'missing'), /not found/);
+  assert.equal(await readFile(path, 'utf8'), before);
+  assert.deepEqual(
+    new Set(await service.deleteChat(project.id, child.id)),
+    new Set([child.id, grandchild.id]),
+  );
+  assert.ok((await service.list(project.id)).some(({ id }) => id === root.id));
+  assert.deepEqual(await service.deleteChat(project.id, root.id), [root.id]);
+  const reopened = new NotebookStore(path);
+  const remaining = await reopened.list(project.id);
+  assert.deepEqual(
+    remaining.map(({ id }) => id),
+    [keeper.id, fileChat.id],
+  );
+  assert.equal(remaining[0].turns[0].passages[0].quote, 'Original');
+  assert.equal(remaining[0].turns[0].jobs[0].answer, 'Saved answer');
+  assert.equal((await reopened.list('b'))[0].id, other.id);
+  assert.equal(
+    (await reopened.listFileNotes(project.id))[0].text,
+    'Keep this annotation',
+  );
+  assert.ok(changed.every((id) => id === project.id));
+});
+
+test('deletion rejects queued and running descendants while allowing unrelated chats to be deleted', async (t) => {
+  const path = await fixture(t);
+  const gates = {
+    busy: Promise.withResolvers(),
+    child: Promise.withResolvers(),
+  };
+  const service = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream({ question }) {
+        yield 'Partial answer';
+        if (gates[question]) await gates[question].promise;
+      },
+    },
+    () => {},
+  );
+  t.after(() => {
+    for (const gate of Object.values(gates)) gate.resolve();
+    service.close();
+  });
+  const project = { id: 'a', root: '/workspace/a', name: 'A' };
+  const root = await service.create(project.id);
+  const busy = await service.create(project.id);
+  const unrelated = await service.create(project.id);
+  await service.send(project, root.id, 'root', 'source');
+  await until(() => !service.isRunning(project.id));
+  const turn = (await service.list(project.id))[0].turns[0];
+  const child = await service.createDiscussion(project.id, {
+    conversationId: root.id,
+    messageId: turn.id,
+    revisionId: turn.id,
+    start: 0,
+    end: 4,
+    quote: 'root',
+  });
+  await service.send(project, busy.id, 'busy', 'busy');
+  await until(
+    async () =>
+      (await service.list(project.id)).find(({ id }) => id === busy.id).turns[0]
+        .jobs[0].status === 'running',
+  );
+  await service.send(project, child.id, 'child', 'child');
+  assert.equal(
+    (await service.list(project.id)).find(({ id }) => id === child.id).turns[0]
+      .jobs[0].status,
+    'queued',
+  );
+  const before = await readFile(path, 'utf8');
+  await assert.rejects(service.deleteChat(project.id, root.id), /Stop or wait/);
+  assert.equal(await readFile(path, 'utf8'), before);
+  assert.deepEqual(await service.deleteChat(project.id, unrelated.id), [
+    unrelated.id,
+  ]);
+  gates.busy.resolve();
+  await until(
+    async () =>
+      (await service.list(project.id)).find(({ id }) => id === child.id)
+        .turns[0].jobs[0].status === 'running',
+  );
+  await assert.rejects(service.deleteChat(project.id, root.id), /Stop or wait/);
+  gates.child.resolve();
+  await until(() => !service.isRunning(project.id));
+  assert.deepEqual(
+    new Set(await service.deleteChat(project.id, root.id)),
+    new Set([root.id, child.id]),
+  );
+  assert.deepEqual(
+    (await service.list(project.id)).map(({ id }) => id),
+    [busy.id],
+  );
+});
+
+test('a cancelled queued chat can be deleted while another response continues', async (t) => {
+  const path = await fixture(t);
+  const gate = Promise.withResolvers();
+  const service = new ChatService(
+    new NotebookStore(path),
+    {
+      async *stream() {
+        yield 'Partial';
+        await gate.promise;
+        yield ' complete';
+      },
+    },
+    () => {},
+  );
+  t.after(() => {
+    gate.resolve();
+    service.close();
+  });
+  const project = { id: 'a', root: '/workspace/a', name: 'A' };
+  const active = await service.create(project.id);
+  const doomed = await service.create(project.id);
+  await service.send(project, active.id, 'Keep running', 'active');
+  await until(
+    async () =>
+      (await service.list(project.id))[0].turns[0]?.jobs[0].status ===
+      'running',
+  );
+  await service.send(
+    project,
+    doomed.id,
+    'Cancel this queued response',
+    'queued',
+  );
+  const queued = (await service.list(project.id))[1].turns[0].jobs[0];
+  assert.equal(queued.status, 'queued');
+  await service.stop(project.id, queued.id);
+  assert.deepEqual(await service.deleteChat(project.id, doomed.id), [
+    doomed.id,
+  ]);
+  assert.equal(service.isRunning(project.id), true);
+  gate.resolve();
+  await until(() => !service.isRunning(project.id));
+  const remaining = await new NotebookStore(path).list(project.id);
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].turns[0].jobs[0].answer, 'Partial complete');
+});
+
 test('persists partial replies and retains the project, chat and cwd of parallel requests', async (t) => {
   const path = await fixture(t);
   const store = new NotebookStore(path);

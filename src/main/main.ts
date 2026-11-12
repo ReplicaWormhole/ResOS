@@ -135,6 +135,13 @@ function registerDesktopHandlers(
   ipcMain.handle('chats:list', async (event, id) =>
     chats.list((await projectFor(event, id)).id),
   );
+  ipcMain.handle('chats:delete', (event, id, chatId) =>
+    changeWorkspace(async () => {
+      if (typeof chatId !== 'string' || !chatId || chatId.length > 128)
+        throw new Error('Invalid chat ID.');
+      return chats.deleteChat((await projectFor(event, id)).id, chatId);
+    }),
+  );
   ipcMain.handle('chats:create', async (event, id) =>
     chats.create((await projectFor(event, id)).id),
   );

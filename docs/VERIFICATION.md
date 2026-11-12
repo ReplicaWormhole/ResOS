@@ -425,3 +425,45 @@ every jump validates the range again before selecting it.
   ignored under `dist/` and `release/`; visual-check screenshots and the
   runnable demo check are temporary `/tmp` artifacts. No live model call,
   system installation, or remote update was performed.
+
+## Individual chat deletion · 2.0.8
+
+- V2-01 / CHAT-05: sidebar chats now offer **Delete chat** through a
+  right-click or Shift+F10/context-menu-key menu. Project and chat menus
+  share keyboard navigation, dismissal, positioning, and theme styling.
+  Confirmation explicitly includes linked discussions and warns that the
+  app offers no undo. Root deletion atomically removes its discussion subtree.
+- Main-process validation rejects invalid IDs and cross-project deletion.
+  Queued/running attempts in the affected subtree block deletion. Other
+  responses may continue. A stopped queued chat can be deleted without
+  interrupting unrelated work; queue promotion also tolerates a chat removed
+  after an earlier queue read.
+- Deleted chat drafts, settings, attachments, and navigation caches are
+  cleared. Surviving chats retain their drafts and saved historical quotes.
+  File annotations and workspace files remain. Deleting the active source
+  while reading a nested discussion clears the parent panel and selects a
+  surviving chat; deleting the final chat restores the empty workspace.
+- `npm run check` passed formatting, lint, typecheck, build, and all 30 source
+  tests. Focused notebook deletion tests and the existing project-menu test
+  also passed. Tests cover subtree deletion, persistence, saved quotes, file
+  notes, project isolation, active/queued descendants, and cancellation.
+- `npm run package:linux` and `node scripts/release-checksum.mjs` produced
+  the 2.0.8 Debian package and SHA-256 sidecar. All eleven packaged desktop
+  tests passed:
+
+  ```sh
+  RESOS_EXECUTABLE="$PWD/release/linux-unpacked/resos" xvfb-run -a npm run test:desktop
+  ```
+
+- The new desktop regression checks confirmation cancellation, keyboard
+  dismissal, inactive/current/final chat deletion, nested-source deletion,
+  retained unrelated drafts, file-origin chats, cross-project and invalid-ID
+  rejection, running-response rejection, deletion with a missing folder, and
+  persistence after restart. The project-menu regression still passes after
+  sharing the menu implementation.
+- Inspected light, dark, and minimum-window menu screenshots. Separate checks
+  confirmed menu bounds, expanded state, keyboard dismissal, and no renderer
+  or CSP errors. The installer checksum and Debian metadata passed. Adversarial
+  review found no remaining defects. No live model call, system installation,
+  or remote update was performed. `dist/` and `release/` outputs remain ignored;
+  visual-check screenshots are temporary `/tmp` artifacts.

@@ -23,6 +23,7 @@ import { harnessLabels } from '../shared/run-settings.js';
 import { renderRichText } from './rich-text.js';
 import { RunSettingsControl } from './run-settings-control.js';
 import type { SelectionActions } from './selection-toolbar.js';
+import { ContextMenu } from './context-menu.js';
 
 const noExcerpts: FileExcerpt[] = [];
 const noPassages: Passage[] = [];
@@ -36,6 +37,7 @@ export class ChatPane {
   private readonly sendButton =
     document.querySelector<HTMLButtonElement>('#chat-send')!;
   private readonly runSettings: RunSettingsControl;
+  private readonly chatMenu: ContextMenu;
   private readonly previewButton =
     document.querySelector<HTMLButtonElement>('#preview-context')!;
   private readonly lookup =
@@ -124,6 +126,9 @@ export class ChatPane {
     private readonly reveal: () => void,
     private readonly showNotes: (notes: FileNote[]) => void,
   ) {
+    this.chatMenu = new ContextMenu('#chat-menu', (error) =>
+      this.showError(error),
+    );
     this.runSettings = new RunSettingsControl(api, () => this.renderComposer());
     window.setInterval(() => void this.refreshExcerptLinks(), 1500);
     void api
@@ -391,6 +396,7 @@ export class ChatPane {
   }
 
   hide(): void {
+    this.chatMenu.close();
     this.rememberScroll();
     this.projectId = undefined;
     this.available = false;
@@ -406,6 +412,7 @@ export class ChatPane {
   show(projectId: string, root: string): void {
     this.root = root;
     if (this.projectId !== projectId) {
+      this.chatMenu.close();
       this.rememberScroll();
       this.projectId = projectId;
       this.available = false;
@@ -440,11 +447,18 @@ export class ChatPane {
       ]);
       if (this.projectId !== projectId || request !== this.request) return;
       const previous = this.current?.id;
+      const savedIds = new Set(chats.map(({ id }) => id));
+      this.forgetChats(
+        this.chats.filter(({ id }) => !savedIds.has(id)).map(({ id }) => id),
+      );
       this.chats = chats;
       this.approvals = approvals;
       this.fileNotes = notes;
-      if (!this.current && chats[0])
-        this.activeChat.set(projectId, chats[0].id);
+      if (!this.current) {
+        const next = chats.find((chat) => !chat.source);
+        if (next) this.activeChat.set(projectId, next.id);
+        else this.activeChat.delete(projectId);
+      }
       this.render(previous !== this.current?.id);
     } catch (error) {
       if (this.projectId === projectId && request === this.request)
@@ -456,6 +470,65 @@ export class ChatPane {
     const chat = this.current;
     if (chat && this.transcript.clientHeight)
       this.scrollPositions.set(chat.id, this.transcript.scrollTop);
+  }
+
+  private forgetChats(ids: string[]): void {
+    if (!ids.length) return;
+    const deleted = new Set(ids);
+    this.chatMenu.close();
+    for (const id of ids) {
+      this.drafts.delete(id);
+      this.draftExcerpts.delete(id);
+      this.draftPassages.delete(id);
+      this.lookupDrafts.delete(id);
+      this.scrollPositions.delete(id);
+      this.fileSides.delete(id);
+      this.expanded.delete(id);
+      this.requestIds.delete(id);
+      this.submitting.delete(id);
+    }
+    this.runSettings.forgetChats(ids);
+    for (const [projectId, chatId] of this.activeChat) {
+      if (deleted.has(chatId)) this.activeChat.delete(projectId);
+    }
+    for (const [chatId, passages] of this.draftPassages) {
+      this.draftPassages.set(
+        chatId,
+        passages.filter((passage) => !deleted.has(passage.conversationId)),
+      );
+    }
+    for (const [chatId, request] of this.requestIds) {
+      if (
+        request.passages.some((passage) => deleted.has(passage.conversationId))
+      )
+        this.requestIds.delete(chatId);
+    }
+    for (const [chatId, side] of this.fileSides) {
+      if (side.origin && deleted.has(side.origin))
+        this.fileSides.delete(chatId);
+    }
+  }
+
+  private async deleteChat(chat: Conversation): Promise<void> {
+    if (
+      !window.confirm(
+        'Delete “' +
+          chat.title +
+          '” and all of its linked discussions?\n\nThis cannot be undone. Quotes from this chat will be removed from unsent drafts. Your project files and other chats will be kept.',
+      )
+    )
+      return;
+    this.error.hidden = true;
+    const deleted = await this.api.deleteChat(chat.projectId, chat.id);
+    this.forgetChats(deleted);
+    if (this.projectId !== chat.projectId) return;
+    await this.refresh(chat.projectId);
+    if (this.projectId !== chat.projectId) return;
+    const mainId = this.current && this.mainChat(this.current).id;
+    const next = [
+      ...this.chatList.querySelectorAll<HTMLButtonElement>('button'),
+    ].find((button) => button.dataset.chatId === mainId);
+    (next ?? this.newButton).focus();
   }
 
   preserveScroll(updateLayout: () => void): void {
@@ -501,6 +574,7 @@ export class ChatPane {
           buttons[index]?.dataset.title !== item.title,
       )
     ) {
+      this.chatMenu.close();
       this.chatList.replaceChildren(
         ...mainChats.map((conversation) => {
           const item = document.createElement('li');
@@ -511,6 +585,16 @@ export class ChatPane {
           });
           button.dataset.chatId = conversation.id;
           button.dataset.title = conversation.title;
+          this.chatMenu.attach(
+            button,
+            () => [
+              {
+                label: 'Delete chat',
+                run: () => this.deleteChat(conversation),
+              },
+            ],
+            'Right-click or press Shift+F10 for chat options.',
+          );
           if (conversation.fileSource) {
             const badge = document.createElement('small');
             badge.className = 'file-badge';

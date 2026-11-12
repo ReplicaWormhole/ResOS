@@ -84,6 +84,10 @@ export class RunSettingsControl {
     this.render();
   }
 
+  forgetChats(ids: readonly string[]): void {
+    for (const id of ids) this.drafts.delete(id);
+  }
+
   selected(): RunSettings | undefined {
     const settings = this.chatId && this.drafts.get(this.chatId);
     if (!settings || !this.catalog || settings.harness !== this.catalog.harness)

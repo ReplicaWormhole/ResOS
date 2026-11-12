@@ -9,8 +9,8 @@ desktop user.
 Verify and install from the directory containing the package and its checksum.
 
 ```sh
-sha256sum -c resos_2.0.7_amd64.deb.sha256
-sudo apt install ./resos_2.0.7_amd64.deb
+sha256sum -c resos_2.0.8_amd64.deb.sha256
+sudo apt install ./resos_2.0.8_amd64.deb
 ```
 
 Quit an older ResOS session before upgrading. The same install command

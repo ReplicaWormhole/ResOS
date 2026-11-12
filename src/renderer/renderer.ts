@@ -4,7 +4,7 @@ import { FileTree } from './file-tree.js';
 import { SelectionToolbar } from './selection-toolbar.js';
 import type { FileSource } from '../shared/notebook-api.js';
 import { WorkspaceEditor } from './workspace-editor.js';
-import { ProjectMenu } from './project-menu.js';
+import { ContextMenu } from './context-menu.js';
 
 declare global {
   interface Window {
@@ -274,35 +274,33 @@ locate.addEventListener('click', async () => {
 window.addEventListener('focus', () => void refreshAvailability());
 window.setInterval(() => void refreshAvailability(), 1500);
 
-const projectMenu = new ProjectMenu(
-  async (project) => {
-    errorMessage.hidden = true;
-    await window.resos.pinProject(project.id, !project.pinned);
-    projects = await window.resos.listProjects();
-    renderProjects(selected);
-    focusProject(project.id);
-  },
-  async (project) => {
-    if (
-      !window.confirm(
-        'Remove “' +
-          project.name +
-          '” from ResOS?\n\nYour folder and saved chats will be kept. Add the same folder again to restore this project.',
-      )
+const projectMenu = new ContextMenu('#project-menu', showError);
+async function pinProject(project: Project): Promise<void> {
+  errorMessage.hidden = true;
+  await window.resos.pinProject(project.id, !project.pinned);
+  projects = await window.resos.listProjects();
+  renderProjects(selected);
+  focusProject(project.id);
+}
+async function removeProject(project: Project): Promise<void> {
+  if (
+    !window.confirm(
+      'Remove “' +
+        project.name +
+        '” from ResOS?\n\nYour folder and saved chats will be kept. Add the same folder again to restore this project.',
     )
-      return;
-    errorMessage.hidden = true;
-    await window.resos.removeProject(project.id);
-    projects = await window.resos.listProjects();
-    const next =
-      selected && projects.some((project) => project.id === selected?.id)
-        ? selected
-        : projects[0];
-    renderProjects(next);
-    focusProject(next?.id);
-  },
-  showError,
-);
+  )
+    return;
+  errorMessage.hidden = true;
+  await window.resos.removeProject(project.id);
+  projects = await window.resos.listProjects();
+  const next =
+    selected && projects.some((project) => project.id === selected?.id)
+      ? selected
+      : projects[0];
+  renderProjects(next);
+  focusProject(next?.id);
+}
 
 function focusProject(id?: string): void {
   const button = [...list.querySelectorAll('button')].find(
@@ -332,7 +330,18 @@ function renderProjects(next: Project | undefined): void {
       button.append(pin);
     }
     button.addEventListener('click', () => selectProject(project));
-    projectMenu.attach(button, project);
+    projectMenu.attach(
+      button,
+      () => [
+        {
+          label: project.pinned ? 'Unpin' : 'Pin',
+          run: () => pinProject(project),
+        },
+        { label: 'Remove project', run: () => removeProject(project) },
+      ],
+      (project.pinned ? 'Pinned. ' : '') +
+        'Right-click or press Shift+F10 for project options.',
+    );
     item.append(button);
     list.append(item);
   }

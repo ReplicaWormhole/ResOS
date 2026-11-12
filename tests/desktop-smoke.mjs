@@ -403,6 +403,300 @@ test(
 );
 
 test(
+  'chat menu deletes individual chats and discussions while preserving other chats and files',
+  { timeout: 45_000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'resos-chat-delete-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const alpha = join(root, 'Alpha');
+    const beta = join(root, 'Beta');
+    await Promise.all([mkdir(alpha), mkdir(beta)]);
+    await writeFile(join(alpha, 'notes.txt'), 'Keep this file.');
+    const executablePath = process.env.RESOS_EXECUTABLE;
+    const launch = () =>
+      electron.launch({
+        executablePath,
+        args: executablePath ? [] : ['.'],
+        chromiumSandbox: true,
+        env: {
+          ...process.env,
+          RESOS_RUNTIME: 'demo',
+          XDG_CONFIG_HOME: join(root, 'config'),
+        },
+        timeout: 15_000,
+      });
+    const app = await launch();
+    let alphaId;
+    let betaId;
+    try {
+      const window = await app.firstWindow();
+      for (const folder of [alpha, beta]) {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [path],
+          });
+        }, folder);
+        await window.getByRole('button', { name: 'Add Project' }).click();
+        await window.getByRole('heading', { name: basename(folder) }).waitFor();
+      }
+      const projects = await window.evaluate(() => window.resos.listProjects());
+      [alphaId, betaId] = projects.map(({ id }) => id);
+      await window
+        .getByRole('button', { name: 'New chat', exact: true })
+        .click();
+      await window
+        .getByRole('list', { name: 'Saved projects' })
+        .getByRole('button', { name: 'Alpha', exact: true })
+        .click();
+      const list = window.getByRole('list', { name: 'Conversations' });
+      const input = window.getByRole('textbox', {
+        name: 'Message',
+        exact: true,
+      });
+      const transcript = window.locator('#chat-transcript');
+      const menu = window.getByRole('menu', { name: 'Chat options' });
+      const chatButton = (id) => list.locator('[data-chat-id="' + id + '"]');
+      const sendNew = async (question) => {
+        await window
+          .getByRole('button', { name: 'New chat', exact: true })
+          .click();
+        await window.locator('#chat-input:enabled:focus').waitFor();
+        await input.fill(question);
+        await window.locator('#chat-send:enabled').click();
+        await transcript.locator('[data-status=complete]').waitFor();
+        return (
+          await window.evaluate((id) => window.resos.listChats(id), alphaId)
+        ).find(({ title }) => title === question);
+      };
+      const doomed = await sendNew('Delete this chat');
+      const childId = await window.evaluate(
+        async ({ projectId, chatId }) => {
+          const chat = (await window.resos.listChats(projectId)).find(
+            ({ id }) => id === chatId,
+          );
+          const turn = chat.turns[0];
+          const child = await window.resos.createDiscussion(projectId, {
+            conversationId: chat.id,
+            messageId: turn.id,
+            revisionId: turn.id,
+            start: 0,
+            end: 6,
+            quote: 'Delete',
+          });
+          await window.resos.sendChat(
+            projectId,
+            child.id,
+            'Child discussion',
+            'child',
+          );
+          return child.id;
+        },
+        { projectId: alphaId, chatId: doomed.id },
+      );
+      await window.waitForFunction(
+        async ({ projectId, childId }) => {
+          const child = (await window.resos.listChats(projectId)).find(
+            ({ id }) => id === childId,
+          );
+          return child.turns[0]?.jobs[0].status === 'complete';
+        },
+        { projectId: alphaId, childId },
+      );
+      await window.evaluate(
+        async ({ projectId, childId }) => {
+          const child = (await window.resos.listChats(projectId)).find(
+            ({ id }) => id === childId,
+          );
+          const turn = child.turns[0];
+          await window.resos.createDiscussion(projectId, {
+            conversationId: child.id,
+            messageId: turn.id,
+            revisionId: turn.id,
+            start: 0,
+            end: 5,
+            quote: 'Child',
+          });
+        },
+        { projectId: alphaId, childId },
+      );
+      const keeper = await sendNew('Keep this chat');
+      await input.fill('Keep this unsent draft');
+      await chatButton(doomed.id).click({ button: 'right' });
+      assert.equal(
+        await chatButton(keeper.id).getAttribute('aria-current'),
+        'true',
+      );
+      window.once('dialog', (dialog) => {
+        assert.match(dialog.message(), /all of its linked discussions/);
+        void dialog.dismiss();
+      });
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      assert.equal(await list.getByRole('button').count(), 2);
+      assert.equal(await input.inputValue(), 'Keep this unsent draft');
+      await chatButton(doomed.id).press('Shift+F10');
+      await menu.waitFor();
+      await window.keyboard.press('Escape');
+      assert.equal(
+        await chatButton(doomed.id).getAttribute('aria-expanded'),
+        'false',
+      );
+      await chatButton(doomed.id).press('Shift+F10');
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      await chatButton(doomed.id).waitFor({ state: 'hidden' });
+      assert.deepEqual(
+        (
+          await window.evaluate((id) => window.resos.listChats(id), alphaId)
+        ).map(({ id }) => id),
+        [keeper.id],
+      );
+      assert.equal(await input.inputValue(), 'Keep this unsent draft');
+      assert.equal(
+        await chatButton(keeper.id).getAttribute('aria-current'),
+        'true',
+      );
+      const nestedRoot = await sendNew('Nested source');
+      await window.evaluate(
+        async ({ projectId, chatId }) => {
+          const chat = (await window.resos.listChats(projectId)).find(
+            ({ id }) => id === chatId,
+          );
+          const turn = chat.turns[0];
+          await window.resos.createDiscussion(projectId, {
+            conversationId: chat.id,
+            messageId: turn.id,
+            revisionId: turn.id,
+            start: 0,
+            end: 6,
+            quote: 'Nested',
+          });
+        },
+        { projectId: alphaId, chatId: nestedRoot.id },
+      );
+      await transcript
+        .getByRole('button', { name: 'Open linked discussion' })
+        .press('Enter');
+      await window.getByRole('region', { name: 'Parent chat' }).waitFor();
+      await chatButton(nestedRoot.id).click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      await chatButton(nestedRoot.id).waitFor({ state: 'hidden' });
+      await window
+        .getByRole('region', { name: 'Parent chat' })
+        .waitFor({ state: 'hidden' });
+      await window
+        .getByRole('button', { name: 'Back to parent' })
+        .waitFor({ state: 'hidden' });
+      assert.equal(
+        await chatButton(keeper.id).getAttribute('aria-current'),
+        'true',
+      );
+      assert.equal(await input.inputValue(), 'Keep this unsent draft');
+      await assert.rejects(
+        window.evaluate(
+          ({ id, chatId }) => window.resos.deleteChat(id, chatId),
+          { id: betaId, chatId: keeper.id },
+        ),
+        /not found in this project/,
+      );
+      await assert.rejects(
+        window.evaluate((id) => window.resos.deleteChat(id, null), alphaId),
+        /Invalid chat ID/,
+      );
+      await input.fill('Running response');
+      await window.locator('#chat-send:enabled').click();
+      await transcript.locator('[data-status=running]').waitFor();
+      await assert.rejects(
+        window.evaluate(
+          ({ id, chatId }) => window.resos.deleteChat(id, chatId),
+          { id: alphaId, chatId: keeper.id },
+        ),
+        /Stop or wait/,
+      );
+      await transcript.locator('[data-status=complete]').nth(1).waitFor();
+      await chatButton(keeper.id).click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      await chatButton(keeper.id).waitFor({ state: 'hidden' });
+      await transcript
+        .getByRole('button', { name: 'Create chat', exact: true })
+        .waitFor();
+      assert.equal(await input.isEnabled(), false);
+      assert.equal(
+        await window
+          .getByRole('button', { name: 'New chat', exact: true })
+          .evaluate((node) => node === globalThis.document.activeElement),
+        true,
+      );
+      await transcript
+        .getByRole('button', { name: 'Create chat', exact: true })
+        .click();
+      await window.locator('#chat-input:enabled:focus').waitFor();
+      assert.equal(await input.inputValue(), '');
+      await window
+        .getByRole('button', { name: 'notes.txt', exact: true })
+        .click();
+      await window
+        .getByRole('button', { name: 'Ask about saved file' })
+        .click();
+      await window.getByRole('button', { name: 'Back to file' }).waitFor();
+      const fileChat = (
+        await window.evaluate((id) => window.resos.listChats(id), alphaId)
+      ).find(({ fileSource }) => fileSource);
+      await chatButton(fileChat.id).click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      await chatButton(fileChat.id).waitFor({ state: 'hidden' });
+      await window
+        .getByRole('button', { name: 'Back to file' })
+        .waitFor({ state: 'hidden' });
+      assert.equal(
+        await readFile(join(alpha, 'notes.txt'), 'utf8'),
+        'Keep this file.',
+      );
+      const [last] = await window.evaluate(
+        (id) => window.resos.listChats(id),
+        alphaId,
+      );
+      await rename(alpha, join(root, 'MovedAlpha'));
+      await window.getByRole('button', { name: 'Locate folder' }).waitFor();
+      await chatButton(last.id).click({ button: 'right' });
+      window.once('dialog', (dialog) => void dialog.accept());
+      await menu.getByRole('menuitem', { name: 'Delete chat' }).click();
+      await chatButton(last.id).waitFor({ state: 'hidden' });
+      assert.equal(
+        (await window.evaluate((id) => window.resos.listChats(id), betaId))
+          .length,
+        1,
+      );
+    } finally {
+      await app.close();
+    }
+    const reopened = await launch();
+    try {
+      const window = await reopened.firstWindow();
+      await window.getByRole('button', { name: 'Add Project' }).waitFor();
+      assert.deepEqual(
+        await window.evaluate((id) => window.resos.listChats(id), alphaId),
+        [],
+      );
+      assert.equal(
+        (await window.evaluate((id) => window.resos.listChats(id), betaId))
+          .length,
+        1,
+      );
+      assert.equal(
+        await readFile(join(root, 'MovedAlpha', 'notes.txt'), 'utf8'),
+        'Keep this file.',
+      );
+    } finally {
+      await reopened.close();
+    }
+  },
+);
+
+test(
   'theme switch stays visible and preserves editor state and the saved preference',
   { timeout: 45_000 },
   async (t) => {

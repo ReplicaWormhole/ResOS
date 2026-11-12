@@ -133,6 +133,7 @@ export interface Conversation {
 
 export interface ChatApi {
   listChats(projectId: string): Promise<Conversation[]>;
+  deleteChat(projectId: string, chatId: string): Promise<string[]>;
   createChat(projectId: string): Promise<Conversation>;
   createFileChat(projectId: string, source: FileSource): Promise<Conversation>;
   listFileNotes(projectId: string): Promise<FileNote[]>;

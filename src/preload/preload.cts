@@ -9,6 +9,7 @@ const api: DesktopApi = {
   projectAvailable: (id) => ipcRenderer.invoke('projects:available', id),
   locateProject: (id) => ipcRenderer.invoke('projects:locate', id),
   listChats: (id) => ipcRenderer.invoke('chats:list', id),
+  deleteChat: (id, chatId) => ipcRenderer.invoke('chats:delete', id, chatId),
   createChat: (id) => ipcRenderer.invoke('chats:create', id),
   createFileChat: (id, source) =>
     ipcRenderer.invoke('chats:create-file', id, source),

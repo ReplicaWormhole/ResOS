@@ -68,6 +68,13 @@ attempt and streams the reply. The prompt and saved context go to the model
 service configured in your Codex installation. Requests to escalate command,
 file, or permission scope appear in the originating project for your decision.
 
+Right-click a chat under **Chats**, or focus it and press **Shift+F10**, then
+choose **Delete chat**. Confirmation permanently deletes that chat and all its
+linked discussions. Stop or wait for their queued or running responses first.
+Other chats, project files, and file annotations stay intact. Quotes already
+saved in other chats remain as historical excerpts; unsent quote attachments
+from deleted chats are removed from drafts.
+
 Press **Enter** to send and **Shift+Enter** for a new line. Your messages
 appear in right-aligned bubbles, followed by the assistant's answer.
 Use **Dark mode** at the bottom of the left sidebar to switch between a

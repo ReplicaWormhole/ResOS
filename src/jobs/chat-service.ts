@@ -130,6 +130,46 @@ export class ChatService {
     return this.notebook.list(projectId);
   }
 
+  async deleteChat(projectId: string, chatId: string): Promise<string[]> {
+    const deleted = await this.notebook.change((chats) => {
+      findChat(chats, projectId, chatId);
+      const ids = new Set([chatId]);
+      let added: boolean;
+      do {
+        added = false;
+        for (const chat of chats) {
+          if (
+            chat.projectId === projectId &&
+            chat.source &&
+            ids.has(chat.source.conversationId) &&
+            !ids.has(chat.id)
+          ) {
+            ids.add(chat.id);
+            added = true;
+          }
+        }
+      } while (added);
+      const removed = chats.filter(
+        (chat) => chat.projectId === projectId && ids.has(chat.id),
+      );
+      if (
+        attempts(removed).some(
+          ({ job }) => job.status === 'queued' || job.status === 'running',
+        )
+      )
+        throw new Error(
+          'Stop or wait for responses in this chat and its discussions before deleting it.',
+        );
+      for (let index = chats.length - 1; index >= 0; index--) {
+        if (chats[index]!.projectId === projectId && ids.has(chats[index]!.id))
+          chats.splice(index, 1);
+      }
+      return [...ids];
+    });
+    this.changed(projectId);
+    return deleted;
+  }
+
   create(projectId: string): Promise<Conversation> {
     return this.notebook.change((chats) => {
       const chat: Conversation = {
@@ -581,8 +621,9 @@ export class ChatService {
         }
         const { chat, turn, job } = queued;
         const started = await this.notebook.change((chats) => {
-          const live = findChat(chats, projectId, chat.id)
-            .turns.find((item) => item.id === turn.id)
+          const live = chats
+            .find((item) => item.projectId === projectId && item.id === chat.id)
+            ?.turns.find((item) => item.id === turn.id)
             ?.jobs.find((item) => item.id === job.id);
           if (live?.status !== 'queued') return false;
           live.status = 'running';

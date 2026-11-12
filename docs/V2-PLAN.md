@@ -17,6 +17,10 @@ desktop installer. Additional coding harnesses are deferred.
   also available through Shift+F10. Pinning orders projects first; removal
   preserves folders and notebook identity so adding the same folder restores
   saved chats. Confirm removal and reject it while a response is active.
+- Give chats the same right-click and keyboard menu pattern, with **Delete
+  chat** and an explicit confirmation covering all linked discussions. Reject
+  deletion of affected queued/running responses. Keep other chats and files,
+  restore a surviving chat or the empty workspace, and persist the deletion.
 - Make chat the default center view. Use a readable transcript column,
   scrollable history, a composer anchored at the bottom, and compact message
   actions. Open files in an editor tab with a clear route back to chat.

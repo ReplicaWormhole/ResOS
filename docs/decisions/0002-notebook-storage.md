@@ -17,6 +17,14 @@ Adding the same resolved folder restores its original registry entry. Registry
 mutations remain serialized and atomic. Removing a project with an active
 response is rejected before changing the registry.
 
+Chat deletion is a separate notebook mutation. It atomically removes the
+selected conversation and descendants linked through their discussion source.
+It rejects queued or running attempts within that subtree. Other conversations
+and independent file notes remain. Historical quotes and context snapshots
+already saved in another chat retain their captured text even when their
+source is deleted. Renderer caches and unsent quotes from deleted chats are
+cleared after deletion. The app offers no undo for chat deletion.
+
 The M03 desktop app starts with a fresh notebook. Browser notebook import
 is outside the current release scope. The legacy checkout remains the
 reference and retains its data. A future import would read a copy and

@@ -1,16 +1,18 @@
-import type { Project } from '../shared/desktop-api.js';
+export interface MenuAction {
+  label: string;
+  run(): Promise<void>;
+}
 
-export class ProjectMenu {
-  private readonly element =
-    document.querySelector<HTMLElement>('#project-menu')!;
+export class ContextMenu {
+  private readonly element: HTMLElement;
   private anchor?: HTMLButtonElement;
   private pending = false;
 
   constructor(
-    private readonly pin: (project: Project) => Promise<void>,
-    private readonly remove: (project: Project) => Promise<void>,
+    selector: string,
     private readonly report: (error: unknown) => void,
   ) {
+    this.element = document.querySelector<HTMLElement>(selector)!;
     this.element.addEventListener('beforetoggle', (event) => {
       this.anchor?.setAttribute(
         'aria-expanded',
@@ -56,18 +58,18 @@ export class ProjectMenu {
     this.element.hidePopover();
   }
 
-  attach(button: HTMLButtonElement, project: Project): void {
+  attach(
+    button: HTMLButtonElement,
+    actions: () => MenuAction[],
+    description: string,
+  ): void {
     button.setAttribute('aria-haspopup', 'menu');
-    button.setAttribute('aria-controls', 'project-menu');
+    button.setAttribute('aria-controls', this.element.id);
     button.setAttribute('aria-expanded', 'false');
-    button.setAttribute(
-      'aria-description',
-      (project.pinned ? 'Pinned. ' : '') +
-        'Right-click or press Shift+F10 for project options.',
-    );
+    button.setAttribute('aria-description', description);
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
-      this.open(button, project, event.clientX, event.clientY);
+      this.open(button, actions(), event.clientX, event.clientY);
     });
     button.addEventListener('keydown', (event) => {
       if (
@@ -77,13 +79,13 @@ export class ProjectMenu {
         return;
       event.preventDefault();
       const bounds = button.getBoundingClientRect();
-      this.open(button, project, bounds.left, bounds.bottom);
+      this.open(button, actions(), bounds.left, bounds.bottom);
     });
   }
 
   private open(
     button: HTMLButtonElement,
-    project: Project,
+    actions: MenuAction[],
     x: number,
     y: number,
   ): void {
@@ -111,8 +113,7 @@ export class ProjectMenu {
       return item;
     };
     this.element.replaceChildren(
-      action(project.pinned ? 'Unpin' : 'Pin', () => this.pin(project)),
-      action('Remove project', () => this.remove(project)),
+      ...actions.map(({ label, run }) => action(label, run)),
     );
     this.element.showPopover();
     this.element.style.left =
